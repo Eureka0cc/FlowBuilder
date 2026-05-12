@@ -9,7 +9,7 @@ import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.exception.ThrowUtils;
-import com.eureka.flowbuilder.model.dto.*;
+import com.eureka.flowbuilder.model.dto.user.*;
 import com.eureka.flowbuilder.model.vo.LoginUserVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
 import com.mybatisflex.core.paginate.Page;

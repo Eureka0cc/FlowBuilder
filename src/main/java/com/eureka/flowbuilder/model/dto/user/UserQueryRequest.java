@@ -1,4 +1,4 @@
-package com.eureka.flowbuilder.model.dto;
+package com.eureka.flowbuilder.model.dto.user;
 
 import com.eureka.flowbuilder.common.PageRequest;
 import lombok.Data;

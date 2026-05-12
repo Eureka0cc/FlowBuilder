@@ -17,7 +17,7 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCode() {
-        File file = aiCodeGeneratorFacade.generateAndSaveCode("我要一个“我永远喜欢爱莉希雅的”日历页面，要求要带有爱莉希雅的图片", CodeGenTypeEnum.MULTI_FILE);
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("我要一个“我永远喜欢爱莉希雅的”日历页面，要求要带有爱莉希雅的图片", CodeGenTypeEnum.MULTI_FILE, 1L);
         assertNotNull(file);
     }
 }

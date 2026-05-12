@@ -5,7 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
-import com.eureka.flowbuilder.model.dto.UserQueryRequest;
+import com.eureka.flowbuilder.model.dto.user.UserQueryRequest;
 import com.eureka.flowbuilder.model.enums.UserRoleEnum;
 import com.eureka.flowbuilder.model.vo.LoginUserVO;
 import com.eureka.flowbuilder.model.vo.UserVO;

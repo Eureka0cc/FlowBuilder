@@ -1,6 +1,6 @@
 package com.eureka.flowbuilder.service;
 
-import com.eureka.flowbuilder.model.dto.UserQueryRequest;
+import com.eureka.flowbuilder.model.dto.user.UserQueryRequest;
 import com.eureka.flowbuilder.model.vo.LoginUserVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
 import com.mybatisflex.core.query.QueryWrapper;
