@@ -8,6 +8,7 @@ import com.mybatisflex.core.service.IService;
 import com.eureka.flowbuilder.model.entity.App;
 import reactor.core.publisher.Flux;
 
+import java.io.Serializable;
 import java.util.List;
 
 /**
@@ -43,8 +44,9 @@ public interface AppService extends IService<App> {
 
     /**
      * 聊天生成代码
-     * @param appId 应用id
-     * @param message 消息
+     *
+     * @param appId     应用id
+     * @param message   消息
      * @param loginUser 登录用户
      * @return 代码
      */
@@ -52,7 +54,8 @@ public interface AppService extends IService<App> {
 
     /**
      * 部署应用
-     * @param appId 应用id
+     *
+     * @param appId     应用id
      * @param loginUser 登录用户
      * @return 部署结果
      */
