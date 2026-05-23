@@ -7,6 +7,8 @@ spring:
     url: jdbc:mysql://localhost:3306/eurekaflowbuilder?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&allowMultiQueries=true&useSSL=false&allowPublicKeyRetrieval=true
     username: root
     password: 123456
+  profiles:
+    active: local
   # redis
   data:
     redis:
@@ -44,8 +46,8 @@ langchain4j:
       api-key: ${DEEPSEEK_API_KEY}
       model-name: deepseek-chat
       max-tokens: 8192
-      strict-json-schema: true
-      response-format: json_object
+#      strict-json-schema: true
+#      response-format: json_object
       log-requests: true
       log-responses: true
     streaming-chat-model:

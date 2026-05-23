@@ -1,5 +1,6 @@
 package com.eureka.flowbuilder.service;
 
+import com.eureka.flowbuilder.model.dto.app.AppAddRequest;
 import com.eureka.flowbuilder.model.dto.app.AppQueryRequest;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.vo.AppVO;
@@ -17,6 +18,15 @@ import java.util.List;
  * @author <a href="https://github.com/Eureka0cc">Eureka</a>
  */
 public interface AppService extends IService<App> {
+
+    /**
+     * 创建应用。
+     *
+     * @param appAddRequest 应用添加请求
+     * @param loginUser     登录用户
+     * @return 应用id
+     */
+    Long createApp(AppAddRequest appAddRequest, User loginUser);
 
     /**
      * 根据实体对象获取VO对象。
@@ -60,4 +70,12 @@ public interface AppService extends IService<App> {
      * @return 部署结果
      */
     String deployApp(Long appId, User loginUser);
+
+    /**
+     * 异步生成应用截图
+     *
+     * @param appId   应用id
+     * @param appUrl  应用url
+     */
+    void generateAppScreenshotAsync(Long appId, String appUrl);
 }
