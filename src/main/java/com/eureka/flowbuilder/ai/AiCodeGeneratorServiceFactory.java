@@ -1,6 +1,6 @@
 package com.eureka.flowbuilder.ai;
 
-import com.eureka.flowbuilder.ai.tools.FileWriteTool;
+import com.eureka.flowbuilder.ai.tools.*;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
@@ -39,6 +39,9 @@ public class AiCodeGeneratorServiceFactory {
     @Resource
     private StreamingChatModel reasoningStreamingChatModel;
 
+    @Resource
+    private ToolManager toolManager;
+
     /**
      * 创建 AI 代码生成服务
      *
@@ -51,7 +54,8 @@ public class AiCodeGeneratorServiceFactory {
 
     /**
      * 创建新的 AI 服务实例
-     * @param appId 应用程序 ID
+     *
+     * @param appId       应用程序 ID
      * @param codeGenType 代码生成类型
      * @return
      */
@@ -71,7 +75,7 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools(toolManager.getAllTools())
                     // 处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
