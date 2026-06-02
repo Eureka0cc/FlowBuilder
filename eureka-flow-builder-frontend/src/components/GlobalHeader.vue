@@ -8,14 +8,16 @@
         <span class="title">Eureka Flow Builder</span>
       </div>
 
-      <!-- 中间导航菜单 -->
-      <a-menu
-        v-model:selectedKeys="selectedKeys"
-        mode="horizontal"
-        :items="menuItems"
-        class="menu"
-        @click="handleMenuClick"
-      />
+      <!-- 中间导航菜单 - 固定宽度，防止切换时抖动 -->
+      <div class="menu-wrapper">
+        <a-menu
+          v-model:selectedKeys="selectedKeys"
+          mode="horizontal"
+          :items="menuItems"
+          class="menu"
+          @click="handleMenuClick"
+        />
+      </div>
 
       <!-- 右侧用户区域：已登录显示头像和用户名，未登录显示登录按钮 -->
       <div class="user-section">
@@ -44,26 +46,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import type { MenuProps } from 'ant-design-vue'
 import { LogoutOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
-import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { logout } from '@/api/userController.ts'
+import { useLoginUserStore } from '@/stores/loginUser'
+import { logout } from '@/api/userController'
 
 const loginUserStore = useLoginUserStore()
 const router = useRouter()
+const route = useRoute()
 
-// 当前高亮的菜单项 key，默认选中首页
-const selectedKeys = ref<string[]>(['/'])
+// 当前高亮的菜单项 key
+const selectedKeys = ref<string[]>([route.path])
 
-// 路由变化时同步菜单高亮状态，确保刷新或直接访问子页面时菜单正确选中
+// 页面加载时根据当前路由设置选中状态
+onMounted(() => {
+  selectedKeys.value = [route.path]
+})
+
+// 路由变化时同步菜单高亮状态
 router.afterEach((to) => {
   selectedKeys.value = [to.path]
 })
 
-// 顶部导航菜单项配置，新增页面时在此添加即可
+// 顶部导航菜单项配置 - 固定三个菜单项，管理员菜单通过disabled控制显示
 const originItems: MenuProps['items'] = [
   {
     key: '/',
@@ -71,31 +79,37 @@ const originItems: MenuProps['items'] = [
     title: '首页',
   },
   {
-    key: '/admin/userMange',
+    key: '/admin/userManage',
     label: '用户管理',
     title: '用户管理',
+    disabled: computed(() => {
+      const loginUser = loginUserStore.loginUser
+      return !loginUser || loginUser.userRole !== 'admin'
+    }).value,
   },
   {
-    key: '/about',
-    label: '关于',
-    title: '关于',
+    key: '/admin/appManage',
+    label: '应用管理',
+    title: '应用管理',
+    disabled: computed(() => {
+      const loginUser = loginUserStore.loginUser
+      return !loginUser || loginUser.userRole !== 'admin'
+    }).value,
   },
 ]
-// 过滤菜单项
-const filterMenus = (menus = [] as MenuProps['items']) => {
-  return menus?.filter((menu) => {
-    const menuKey = menu?.key as string
-    if (menuKey?.startsWith('/admin')) {
+
+// 展示在菜单的路由数组 - 不再过滤，保持固定数量
+const menuItems = computed<MenuProps['items']>(() => {
+  return originItems.map((item: any) => {
+    // 动态计算disabled状态
+    if (item.key?.startsWith('/admin')) {
       const loginUser = loginUserStore.loginUser
-      if (!loginUser || loginUser.userRole !== 'admin') {
-        return false
-      }
+      item.disabled = !loginUser || loginUser.userRole !== 'admin'
     }
-    return true
+    return item
   })
-}
-// 展示在菜单的路由数组
-const menuItems = computed<MenuProps['items']>(() => filterMenus(originItems))
+})
+
 // 菜单点击回调：更新选中状态并跳转路由
 const handleMenuClick: MenuProps['onClick'] = (e) => {
   const key = e.key as string
@@ -124,8 +138,13 @@ const doLogout = async () => {
 </script>
 
 <style scoped>
-/* 顶栏容器：白色背景 + 底部阴影 */
+/* 顶栏容器：固定定位，防止抖动 */
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   padding: 0;
@@ -133,7 +152,7 @@ const doLogout = async () => {
   line-height: 64px;
 }
 
-/* 内容居中，最大宽度 1200px，三栏 flex 布局 */
+/* 内容居中，最大宽度 1200px，三栏 flex 布局 - 使用固定比例 */
 .header-content {
   max-width: 1200px;
   margin: 0 auto;
@@ -144,12 +163,13 @@ const doLogout = async () => {
   padding: 0 24px;
 }
 
-/* Logo 区域：图标 + 标题，不允许收缩 */
+/* Logo 区域：固定宽度，不允许收缩 */
 .logo-section {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  width: 200px;
 }
 
 .logo {
@@ -165,34 +185,95 @@ const doLogout = async () => {
   white-space: nowrap;
 }
 
-/* 菜单占据剩余空间，去掉默认底部边框 */
-.menu {
-  flex: 1;
-  border-bottom: none;
-  line-height: 64px;
-  margin: 0 24px;
-  min-width: 0;
+/* 菜单包装器 - 固定宽度，防止抖动 */
+.menu-wrapper {
+  flex: 0 0 auto;
+  width: 280px;
+  display: flex;
+  justify-content: center;
 }
 
-/* 用户区域不允许收缩 */
+/* 菜单样式 */
+.menu {
+  line-height: 64px;
+  background: transparent;
+  border-bottom: none;
+  width: 100%;
+}
+
+/* 菜单项基础样式 - 无下划线 */
+:deep(.menu .ant-menu-item) {
+  transition: all 0.3s ease-in-out;
+  border-bottom: none !important;
+  margin: 0 8px !important;
+  padding: 0 16px !important;
+  position: relative;
+}
+
+/* 选中状态的下划线 - 只有选中的才有 */
+:deep(.menu .ant-menu-item-selected) {
+  color: #1890ff !important;
+  font-weight: 500;
+}
+
+/* 使用伪元素实现下划线，只有选中项显示 */
+:deep(.menu .ant-menu-item-selected::after) {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #1890ff;
+  transition: all 0.3s ease-in-out;
+}
+
+/* 悬停状态 */
+:deep(.menu .ant-menu-item:hover:not(.ant-menu-item-selected)) {
+  color: #1890ff !important;
+}
+
+/* 禁用项样式 - 完全隐藏 */
+:deep(.menu .ant-menu-item-disabled) {
+  display: none !important;
+}
+
+/* 用户区域：固定宽度，不允许收缩 */
 .user-section {
   flex-shrink: 0;
+  width: 200px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 /* ===== 响应式适配 ===== */
 
-/* 平板：缩小间距和 Logo 尺寸 */
+/* 平板 */
 @media (max-width: 768px) {
   .header-content {
     padding: 0 16px;
+  }
+
+  .logo-section {
+    width: auto;
   }
 
   .title {
     font-size: 16px;
   }
 
-  .menu {
-    margin: 0 12px;
+  .menu-wrapper {
+    width: 220px;
+  }
+
+  :deep(.menu .ant-menu-item) {
+    margin: 0 4px !important;
+    padding: 0 12px !important;
+  }
+
+  .user-section {
+    width: auto;
   }
 
   .logo {
@@ -201,14 +282,15 @@ const doLogout = async () => {
   }
 }
 
-/* 手机：隐藏标题文字，菜单进一步压缩 */
+/* 手机 */
 @media (max-width: 576px) {
   .title {
     display: none;
   }
 
-  .menu {
-    margin: 0 8px;
+  .menu-wrapper {
+    width: auto;
+    flex: 1;
   }
 }
 </style>

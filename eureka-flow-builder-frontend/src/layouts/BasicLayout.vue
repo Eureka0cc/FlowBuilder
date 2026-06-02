@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <GlobalHeader />
 
-    <!-- 内容区域 -->
+    <!-- 内容区域 - 通栏全屏流式布局 -->
     <a-layout-content class="content">
       <div class="content-wrapper">
         <RouterView />
@@ -26,43 +26,33 @@ import GlobalFooter from '@/components/GlobalFooter.vue'
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: #fff;
 }
 
 .content {
   flex: 1;
-  background: #f0f2f5;
-  padding: 24px;
+  background: #fff;
+  /* 移除内边距，让内容区域真正通栏 */
+  padding: 0;
 }
 
 .content-wrapper {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  min-height: calc(100vh - 64px - 72px);
   background: #fff;
-  padding: 24px;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  min-height: calc(100vh - 64px - 72px - 48px);
+  /* 移除之前的卡片样式 */
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  /* 为固定导航栏留出空间 */
+  padding-top: 64px;
 }
 
-/* 响应式设计 */
+/* 响应式设计 - 简化响应式处理 */
 @media (max-width: 768px) {
-  .content {
-    padding: 16px;
-  }
-
   .content-wrapper {
-    padding: 16px;
-  }
-}
-
-@media (max-width: 576px) {
-  .content {
-    padding: 12px;
-  }
-
-  .content-wrapper {
-    padding: 12px;
-    border-radius: 0;
+    min-height: calc(100vh - 64px - 100px);
   }
 }
 </style>
