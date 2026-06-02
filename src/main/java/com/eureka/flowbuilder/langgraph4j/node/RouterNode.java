@@ -1,6 +1,7 @@
 package com.eureka.flowbuilder.langgraph4j.node;
 
 import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingService;
+import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.eureka.flowbuilder.langgraph4j.state.WorkflowContext;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
 import com.eureka.flowbuilder.utils.SpringContextUtil;
@@ -20,9 +21,9 @@ public class RouterNode {
 
             CodeGenTypeEnum generationType;
             try {
-                // 获取AI路由服务
-                AiCodeGenTypeRoutingService routingService = SpringContextUtil.getBean(AiCodeGenTypeRoutingService.class);
-                // 根据原始提示词进行智能路由
+                // 每次创建新实例，避免多线程共享单例导致的 ConcurrentModificationException
+                AiCodeGenTypeRoutingServiceFactory factory = SpringContextUtil.getBean(AiCodeGenTypeRoutingServiceFactory.class);
+                AiCodeGenTypeRoutingService routingService = factory.createAiCodeGenTypeRoutingService();
                 generationType = routingService.routeCodeGenType(context.getOriginalPrompt());
                 log.info("AI智能路由完成，选择类型: {} ({})", generationType.getValue(), generationType.getText());
             } catch (Exception e) {

@@ -3,7 +3,6 @@ package com.eureka.flowbuilder.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
-import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingService;
 import com.eureka.flowbuilder.annotation.AuthCheck;
 import com.eureka.flowbuilder.common.BaseResponse;
 import com.eureka.flowbuilder.common.DeleteRequest;
@@ -17,6 +16,8 @@ import com.eureka.flowbuilder.model.dto.app.*;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
 import com.eureka.flowbuilder.model.vo.AppVO;
+import com.eureka.flowbuilder.ratelimiter.annotation.RateLimit;
+import com.eureka.flowbuilder.ratelimiter.enums.RateLimitType;
 import com.eureka.flowbuilder.service.ProjectDownloadService;
 import com.eureka.flowbuilder.service.UserService;
 import com.mybatisflex.core.paginate.Page;
@@ -24,6 +25,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -55,9 +57,6 @@ public class AppController {
     @Resource
     private ProjectDownloadService projectDownloadService;
 
-    @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
-
     /**
      * 应用聊天生成代码（流式 SSE）
      *
@@ -67,6 +66,9 @@ public class AppController {
      * @return 生成结果流
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RateLimit(limitType = RateLimitType.USER, rate = 5, rateInterval = 60, message = "AI 对话请求过于频繁，请稍后再试")
+
+
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
                                                        @RequestParam String message,
                                                        HttpServletRequest request) {
@@ -235,6 +237,11 @@ public class AppController {
      * @return 精选应用列表
      */
     @PostMapping("/good/list/page/vo")
+    @Cacheable(
+            value = "good_app_page",
+            key = "T(com.eureka.flowbuilder.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
+            condition = "#appQueryRequest.pageNum <= 10"
+    )
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
         // 限制每页最多 20 个

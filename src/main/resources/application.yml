@@ -50,6 +50,7 @@ langchain4j:
 #      response-format: json_object
       log-requests: true
       log-responses: true
+      max-retries: 3
     streaming-chat-model:
       base-url: https://api.deepseek.com
       api-key: ${DEEPSEEK_API_KEY}

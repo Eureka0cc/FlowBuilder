@@ -2,6 +2,7 @@ package com.eureka.flowbuilder.common;
 
 import com.eureka.flowbuilder.exception.ErrorCode;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
