@@ -1,9 +1,15 @@
 package com.eureka.flowbuilder.config;
 
+import com.eureka.flowbuilder.constant.AppConstant;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.io.File;
+
+@Slf4j
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
@@ -18,5 +24,27 @@ public class CorsConfig implements WebMvcConfigurer {
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("*");
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // 获取绝对路径并转换为 URI 格式
+        File outputDir = new File(AppConstant.CODE_OUTPUT_ROOT_DIR).getAbsoluteFile();
+        File deployDir = new File(AppConstant.CODE_DEPLOY_ROOT_DIR).getAbsoluteFile();
+
+        // 使用 toURI() 方法确保路径格式正确
+        String outputUri = outputDir.toURI().toString();
+        String deployUri = deployDir.toURI().toString();
+
+        log.info("配置静态资源映射 - 输出目录: {}", outputUri);
+        log.info("配置静态资源映射 - 部署目录: {}", deployUri);
+
+        // 配置静态资源映射
+        registry.addResourceHandler("/static/**")
+                .addResourceLocations(outputUri);
+
+        // 配置部署目录的静态资源映射
+        registry.addResourceHandler("/deploy/**")
+                .addResourceLocations(deployUri);
     }
 }

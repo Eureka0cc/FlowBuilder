@@ -17,24 +17,81 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.time.Duration;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
+@Component
 public class WebScreenshotUtils {
 
-    private static final WebDriver webDriver;
+    private final ReentrantLock lock = new ReentrantLock();
 
-    static {
-        final int DEFAULT_WIDTH = 1600;
-        final int DEFAULT_HEIGHT = 900;
-        webDriver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+    private volatile WebDriver webDriver;
+
+    private static final int DEFAULT_WIDTH = 1600;
+    private static final int DEFAULT_HEIGHT = 900;
+
+    /**
+     * 懒加载获取 WebDriver，如果会话已失效则自动重建
+     */
+    private WebDriver getDriver() {
+        if (webDriver != null && isSessionValid()) {
+            return webDriver;
+        }
+        lock.lock();
+        try {
+            // 双重检查
+            if (webDriver != null && isSessionValid()) {
+                return webDriver;
+            }
+            // 如果旧 driver 还存在（会话已失效），先尝试 quit
+            if (webDriver != null) {
+                try {
+                    webDriver.quit();
+                } catch (Exception e) {
+                    log.warn("尝试关闭失效的 WebDriver 时出现异常（可忽略）: {}", e.getMessage());
+                }
+            }
+            webDriver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+            log.info("WebDriver 已初始化/重建");
+            return webDriver;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * 检查当前会话是否有效
+     */
+    private boolean isSessionValid() {
+        try {
+            webDriver.getTitle(); // 最简单的探活调用
+            return true;
+        } catch (Exception e) {
+            log.warn("WebDriver 会话已失效，将重新创建: {}", e.getMessage());
+            return false;
+        }
     }
 
     @PreDestroy
     public void destroy() {
-        webDriver.quit();
+        lock.lock();
+        try {
+            if (webDriver != null) {
+                try {
+                    webDriver.quit();
+                    log.info("WebDriver 已关闭");
+                } catch (Exception e) {
+                    log.warn("关闭 WebDriver 时出现异常: {}", e.getMessage());
+                }
+                webDriver = null;
+            }
+        } finally {
+            lock.unlock();
+        }
     }
 
     /**
@@ -43,7 +100,7 @@ public class WebScreenshotUtils {
      * @param webUrl 网页URL
      * @return 压缩后的截图文件路径，失败返回null
      */
-    public static String saveWebPageScreenshot(String webUrl) {
+    public String saveWebPageScreenshot(String webUrl) {
         if (StrUtil.isBlank(webUrl)) {
             log.error("网页URL不能为空");
             return null;
@@ -57,12 +114,14 @@ public class WebScreenshotUtils {
             final String IMAGE_SUFFIX = ".png";
             // 原始截图文件路径
             String imageSavePath = rootPath + File.separator + RandomUtil.randomNumbers(5) + IMAGE_SUFFIX;
+            // 获取/重建 WebDriver
+            WebDriver driver = getDriver();
             // 访问网页
-            webDriver.get(webUrl);
+            driver.get(webUrl);
             // 等待页面加载完成
-            waitForPageLoad(webDriver);
+            waitForPageLoad(driver);
             // 截图
-            byte[] screenshotBytes = ((TakesScreenshot) webDriver).getScreenshotAs(OutputType.BYTES);
+            byte[] screenshotBytes = ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES);
             // 保存原始图片
             saveImage(screenshotBytes, imageSavePath);
             log.info("原始截图保存成功: {}", imageSavePath);
@@ -84,7 +143,7 @@ public class WebScreenshotUtils {
     /**
      * 初始化 Chrome 浏览器驱动
      */
-    private static WebDriver initChromeDriver(int width, int height) {
+    private WebDriver initChromeDriver(int width, int height) {
         try {
             // 自动管理 ChromeDriver
             WebDriverManager.chromedriver().setup();
@@ -123,7 +182,7 @@ public class WebScreenshotUtils {
      * @param imageBytes 图片字节数组
      * @param imagePath  图片保存路径
      */
-    private static void saveImage(byte[] imageBytes, String imagePath) {
+    private void saveImage(byte[] imageBytes, String imagePath) {
         try {
             FileUtil.writeBytes(imageBytes, imagePath);
         } catch (Exception e) {
@@ -137,7 +196,7 @@ public class WebScreenshotUtils {
      * @param originalImagePath  原始图片路径
      * @param compressedImagePath 压缩后图片路径
      */
-    private static void compressImage(String originalImagePath, String compressedImagePath) {
+    private void compressImage(String originalImagePath, String compressedImagePath) {
         // 压缩图片质量（0.1 = 10% 质量）
         final float COMPRESSION_QUALITY = 0.3f;
         try {
@@ -155,7 +214,7 @@ public class WebScreenshotUtils {
     /**
      * 等待页面加载完成
      */
-    private static void waitForPageLoad(WebDriver driver) {
+    private void waitForPageLoad(WebDriver driver) {
         try {
             // 创建等待页面加载对象
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));

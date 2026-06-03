@@ -21,6 +21,7 @@
           :placeholder="'使用 NoCode 创建一个高效的小工具，帮我计算......'"
           :auto-size="{ minRows: 3, maxRows: 6 }"
           class="prompt-input"
+          @keydown.ctrl.enter="handleCreateApp"
         />
         <div class="input-actions">
           <div class="left-actions">
@@ -39,9 +40,12 @@
             size="large"
             class="send-btn"
             :loading="creating"
+            :disabled="!promptText.trim() || creating"
             @click="handleCreateApp"
           >
-            <arrow-up-outlined />
+            <template #icon>
+              <arrow-up-outlined />
+            </template>
           </a-button>
         </div>
       </div>
@@ -71,43 +75,26 @@
             @search="loadMyApps"
           />
         </div>
-        <a-row :gutter="[24, 24]">
-          <a-col
-            v-for="app in myApps"
-            :key="app.id"
-            :xs="24"
-            :sm="12"
-            :md="8"
-            :lg="6"
-            :xl="5"
-          >
-            <a-card hoverable class="app-card" @click="goToAppChat(app.id)">
-              <div class="app-cover-wrapper">
-                <img
-                  v-if="app.cover"
-                  :src="app.cover"
-                  :alt="app.appName"
-                  class="app-cover"
-                />
-                <div v-else class="app-cover-placeholder">
-                  <file-image-outlined />
-                </div>
-              </div>
-              <div class="app-info">
-                <h3 class="app-name">{{ app.appName || '未命名应用' }}</h3>
-                <p class="app-meta">创建于 {{ formatTime(app.createTime) }}</p>
-              </div>
-            </a-card>
+        <a-row :gutter="[16, 16]">
+          <a-col v-for="app in myApps" :key="app.id" :xs="24" :sm="12" :md="8" :lg="4.8" :xl="4.8">
+            <AppCard
+              :app="app"
+              :show-create-time="true"
+              @view-chat="goToAppChat"
+              @view-work="(app) => openDeployedApp(app.deployKey)"
+            />
           </a-col>
         </a-row>
         <div v-if="myApps.length === 0" class="empty-state">
           <a-empty description="暂无应用，快去创建一个吧" />
         </div>
-        <div v-if="myAppsTotal > myAppsPageSize" class="pagination-wrapper">
+        <div v-if="myApps.length > 0" class="pagination-wrapper">
           <a-pagination
             v-model:current="myAppsPageNum"
             :total="myAppsTotal"
             :page-size="myAppsPageSize"
+            :show-size-changer="false"
+            :show-total="(total) => `共 ${total} 个应用`"
             @change="loadMyApps"
           />
         </div>
@@ -126,55 +113,35 @@
             @search="loadGoodApps"
           />
         </div>
-        <a-row :gutter="[24, 24]">
+        <a-row :gutter="[16, 16]">
           <a-col
             v-for="app in goodApps"
             :key="app.id"
             :xs="24"
             :sm="12"
             :md="8"
-            :lg="6"
-            :xl="5"
+            :lg="4.8"
+            :xl="4.8"
           >
-            <a-card hoverable class="app-card" @click="goToAppChat(app.id)">
-              <div class="app-cover-wrapper">
-                <img
-                  v-if="app.cover"
-                  :src="app.cover"
-                  :alt="app.appName"
-                  class="app-cover"
-                />
-                <div v-else class="app-cover-placeholder">
-                  <file-image-outlined />
-                </div>
-              </div>
-              <div class="app-info">
-                <div class="app-author">
-                  <a-avatar
-                    v-if="app.user?.userAvatar"
-                    :src="app.user.userAvatar"
-                    size="small"
-                  />
-                  <a-avatar v-else size="small">
-                    <user-outlined />
-                  </a-avatar>
-                  <span class="author-name">{{ app.user?.userName || '匿名用户' }}</span>
-                  <a-tag v-if="app.priority === 99" color="gold">精选</a-tag>
-                </div>
-                <h3 class="app-name">{{ app.appName || '未命名应用' }}</h3>
-                <p class="app-type">{{ getCodeGenTypeText(app.codeGenType) }}</p>
-              </div>
-            </a-card>
+            <AppCard
+              :app="app"
+              :show-author="true"
+              :show-type="true"
+              @view-chat="goToAppChat"
+              @view-work="(app) => openDeployedApp(app.deployKey)"
+            />
           </a-col>
         </a-row>
         <div v-if="goodApps.length === 0" class="empty-state">
           <a-empty description="暂无精选应用" />
         </div>
-        <div v-if="goodAppsTotal > goodAppsPageSize" class="pagination-wrapper">
+        <div v-if="goodApps.length > 0" class="pagination-wrapper">
           <a-pagination
             v-model:current="goodAppsPageNum"
             :total="goodAppsTotal"
             :page-size="goodAppsPageSize"
+            :show-size-changer="false"
+            :show-total="(total) => `共 ${total} 个应用`"
             @change="loadGoodApps"
           />
         </div>
@@ -191,15 +158,20 @@ import {
   PaperClipOutlined,
   ThunderboltOutlined,
   ArrowUpOutlined,
-  FileImageOutlined,
-  UserOutlined,
 } from '@ant-design/icons-vue'
-import dayjs from 'dayjs'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'
+import AppCard from '@/components/AppCard.vue'
 
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
+
+// 封面图加载错误处理
+const coverErrorSet = ref<Set<string>>(new Set())
+
+const handleCoverError = (appId: string) => {
+  coverErrorSet.value.add(appId)
+}
 
 // 输入框文本
 const promptText = ref('')
@@ -211,14 +183,14 @@ const quickExamples = ['波普风电商页面', '企业网站', '电商运营后
 // 我的应用数据
 const myApps = ref<API.AppVO[]>([])
 const myAppsPageNum = ref(1)
-const myAppsPageSize = ref(20)
+const myAppsPageSize = ref(6)
 const myAppsTotal = ref(0)
 const myAppSearchText = ref('')
 
 // 精选应用数据
 const goodApps = ref<API.AppVO[]>([])
 const goodAppsPageNum = ref(1)
-const goodAppsPageSize = ref(20)
+const goodAppsPageSize = ref(6)
 const goodAppsTotal = ref(0)
 const goodAppSearchText = ref('')
 
@@ -274,7 +246,8 @@ const handleCreateApp = async () => {
     if (res.data.code === 0 && res.data.data) {
       const appId = res.data.data
       message.success('应用创建成功')
-      router.push(`/app/chat/${appId}`)
+      // 跳转到对话页，标记为新应用以自动发送初始提示词
+      router.push(`/app/chat/${appId}?new=true`)
     } else {
       message.error('创建应用失败：' + res.data.message)
     }
@@ -286,9 +259,17 @@ const handleCreateApp = async () => {
 }
 
 // 跳转到应用对话页
-const goToAppChat = (appId?: number) => {
+const goToAppChat = (appId?: string) => {
   if (!appId) return
-  router.push(`/app/chat/${appId}`)
+  // 添加 view=1 参数，防止自动发送消息
+  router.push(`/app/chat/${appId}?view=1`)
+}
+
+// 新窗口打开部署的应用
+const openDeployedApp = (deployKey?: string) => {
+  if (!deployKey) return
+  // 部署地址格式：http://localhost:8123/api/deploy/{deployKey}/index.html
+  window.open(`http://localhost:8123/api/deploy/${deployKey}/index.html`, '_blank')
 }
 
 // 加载我的应用
@@ -299,6 +280,8 @@ const loadMyApps = async () => {
       pageNum: myAppsPageNum.value,
       pageSize: myAppsPageSize.value,
       appName: myAppSearchText.value || undefined,
+      sortField: 'createTime',
+      sortOrder: 'descend',
     })
     if (res.data.code === 0 && res.data.data) {
       myApps.value = res.data.data.records || []
@@ -316,6 +299,8 @@ const loadGoodApps = async () => {
       pageNum: goodAppsPageNum.value,
       pageSize: goodAppsPageSize.value,
       appName: goodAppSearchText.value || undefined,
+      sortField: 'editTime',
+      sortOrder: 'descend',
     })
     if (res.data.code === 0 && res.data.data) {
       goodApps.value = res.data.data.records || []
@@ -426,6 +411,26 @@ onMounted(() => {
 
 .send-btn {
   background: #333;
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #000;
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 
 /* 示例标签 */
@@ -515,7 +520,9 @@ onMounted(() => {
 /* 应用卡片 */
 .app-card {
   cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
+  transition:
+    transform 0.3s,
+    box-shadow 0.3s;
   height: 100%;
 }
 
@@ -538,11 +545,31 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  animation: fadeIn 0.5s ease-in-out forwards;
 }
 
-.app-cover-placeholder {
-  font-size: 48px;
-  color: #ccc;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.app-cover-default {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.default-cover-svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .app-info {
@@ -564,13 +591,6 @@ onMounted(() => {
   margin: 0;
 }
 
-.app-author {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
 .author-name {
   font-size: 13px;
   color: #666;
@@ -584,6 +604,18 @@ onMounted(() => {
   font-size: 12px;
   color: #999;
   margin: 0;
+}
+
+.app-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.app-actions .ant-btn {
+  flex: 1;
 }
 
 .empty-state {

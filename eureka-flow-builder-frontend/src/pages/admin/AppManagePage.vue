@@ -3,13 +3,13 @@
     <!-- 搜索表单 -->
     <a-form layout="inline" :model="searchParams" @finish="doSearch">
       <a-form-item label="应用ID">
-        <a-input-number v-model:value="searchParams.id" placeholder="输入应用ID" style="width: 150px" />
+        <a-input v-model:value="searchParams.id" placeholder="输入应用ID" style="width: 150px" />
       </a-form-item>
       <a-form-item label="应用名称">
         <a-input v-model:value="searchParams.appName" placeholder="输入应用名称" />
       </a-form-item>
       <a-form-item label="用户ID">
-        <a-input-number v-model:value="searchParams.userId" placeholder="输入用户ID" style="width: 150px" />
+        <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" style="width: 150px" />
       </a-form-item>
       <a-form-item label="生成类型">
         <a-select
@@ -57,13 +57,20 @@
         </template>
         <template v-else-if="column.dataIndex === 'user'">
           <div v-if="record.user" class="user-info">
-            <a-avatar v-if="record.user.userAvatar" :src="record.user.userAvatar" size="small" />
-            <a-avatar v-else size="small">
-              <user-outlined />
-            </a-avatar>
+            <UserAvatar
+              :user-avatar="record.user.userAvatar"
+              :user-id="record.user.id"
+              size="small"
+            />
             <span>{{ record.user.userName || record.user.userAccount }}</span>
           </div>
-          <span v-else>用户{{ record.userId }}</span>
+          <div v-else class="user-info">
+            <UserAvatar
+              :user-id="record.userId"
+              size="small"
+            />
+            <span>用户{{ record.userId }}</span>
+          </div>
         </template>
         <template v-else-if="column.dataIndex === 'createTime'">
           {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
@@ -84,7 +91,6 @@
 </template>
 
 <script lang="ts" setup>
-import { UserOutlined } from '@ant-design/icons-vue'
 import { reactive, ref, onMounted, computed } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
@@ -94,6 +100,7 @@ import {
   deleteAppByAdmin,
   updateAppByAdmin,
 } from '@/api/appController'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 
@@ -230,7 +237,7 @@ const doReset = () => {
 }
 
 // 删除数据
-const doDelete = async (id?: number) => {
+const doDelete = async (id?: string) => {
   if (!id) {
     return
   }

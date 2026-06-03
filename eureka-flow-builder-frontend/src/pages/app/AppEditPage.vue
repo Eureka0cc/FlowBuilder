@@ -119,7 +119,7 @@ const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
 // 应用ID
-const appId = computed(() => Number(route.params.id))
+const appId = computed(() => route.params.id as string)
 
 // 是否为管理员
 const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
@@ -129,7 +129,7 @@ const appInfo = ref<API.AppVO>({})
 
 // 表单状态
 const formState = ref<API.AppUpdateRequest & { priority?: number; cover?: string }>({
-  id: 0,
+  id: '',
   appName: '',
   cover: '',
   priority: 0,

@@ -19,6 +19,7 @@ import com.eureka.flowbuilder.model.dto.app.AppQueryRequest;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.enums.ChatHistoryMessageTypeEnum;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import com.eureka.flowbuilder.model.vo.AppVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
 import com.eureka.flowbuilder.service.ChatHistoryService;
@@ -72,6 +73,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
+
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Long createApp(AppAddRequest appAddRequest, User loginUser) {
@@ -238,8 +242,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         updateApp.setDeployedTime(LocalDateTime.now());
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
-        // 10. 构建应用访问 URL
-        String appDeployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        // 10. 构建应用访问 URL (包含 index.html)
+        String appDeployUrl = String.format("%s/%s/%s", AppConstant.CODE_DEPLOY_HOST, deployKey, AppConstant.DEPLOY_INDEX_FILE);
         // 11. 异步生成截图并更新应用封面
         generateAppScreenshotAsync(appId, appDeployUrl);
         return appDeployUrl;
@@ -255,14 +259,41 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     public void generateAppScreenshotAsync(Long appId, String appUrl) {
         // 使用虚拟线程异步执行
         Thread.startVirtualThread(() -> {
-            // 调用截图服务生成截图并上传
-            String screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
-            // 更新应用封面字段
-            App updateApp = new App();
-            updateApp.setId(appId);
-            updateApp.setCover(screenshotUrl);
-            boolean updated = this.updateById(updateApp);
-            ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+            String screenshotUrl = null;
+            try {
+                // 1. 调用截图服务生成截图并上传
+                screenshotUrl = screenshotService.generateAndUploadScreenshot(appUrl);
+                log.info("截图生成成功，URL: {}", screenshotUrl);
+            } catch (Exception e) {
+                // 截图失败不阻断封面更新和缓存清除
+                log.error("截图生成失败，将继续更新封面和清除缓存", e);
+            }
+            try {
+                // 2. 更新应用封面和编辑时间
+                App updateApp = new App();
+                updateApp.setId(appId);
+                if (screenshotUrl != null) {
+                    updateApp.setCover(screenshotUrl);
+                }
+                updateApp.setEditTime(LocalDateTime.now());
+                boolean updated = this.updateById(updateApp);
+                ThrowUtils.throwIf(!updated, ErrorCode.OPERATION_ERROR, "更新应用封面字段失败");
+                log.info("应用封面已更新，appId: {}", appId);
+            } catch (Exception e) {
+                log.error("更新应用封面失败，appId: {}", appId, e);
+            }
+            // 3. 无论截图和更新是否成功，清除精选缓存以保证数据一致性
+            try {
+                var keys = stringRedisTemplate.keys("good_app_page::*");
+                if (keys != null && !keys.isEmpty()) {
+                    stringRedisTemplate.delete(keys);
+                    log.info("已清除 good_app_page 缓存 ({} 条)，appId: {}", keys.size(), appId);
+                } else {
+                    log.info("good_app_page 缓存为空，无需清除");
+                }
+            } catch (Exception e) {
+                log.error("清除 good_app_page 缓存失败", e);
+            }
         });
     }
 

@@ -23,8 +23,13 @@ public interface AppConstant {
     String CODE_DEPLOY_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_deploy";
 
     /**
-     * 应用部署域名
+     * 应用部署域名（包含端口和上下文路径）
      */
-    String CODE_DEPLOY_HOST = "http://localhost";
+    String CODE_DEPLOY_HOST = "http://localhost:8123/api/deploy";
+
+    /**
+     * 部署应用入口文件
+     */
+    String DEPLOY_INDEX_FILE = "index.html";
 
 }

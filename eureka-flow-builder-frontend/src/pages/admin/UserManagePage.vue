@@ -40,7 +40,11 @@
           <template #bodyCell="{ column, record }">
             <template v-if="column.dataIndex === 'userAvatar'">
               <a-image v-if="record.userAvatar" :src="record.userAvatar" :width="80" />
-              <span v-else class="text-gray-400">-</span>
+              <div v-else class="default-avatar-cell">
+                <div class="default-avatar-wrapper" :style="{ backgroundColor: getAvatarBgColor(record.id) }">
+                  <img src="/default_avatar.svg" class="default-avatar-img" alt="默认头像" />
+                </div>
+              </div>
             </template>
             <template v-else-if="column.dataIndex === 'userRole'">
               <a-tag v-if="record.userRole === 'admin'" color="green">管理员</a-tag>
@@ -73,7 +77,7 @@ const columns = [
     width: 180,
     fixed: 'left',
     ellipsis: true,
-    customRender: ({ text }: { text: number }) => {
+    customRender: ({ text }: { text: string }) => {
       return h('span', { class: 'id-cell' }, String(text))
     },
   },
@@ -177,7 +181,7 @@ const doSearch = () => {
 }
 
 // 删除数据
-const doDelete = async (id?: number) => {
+const doDelete = async (id?: string) => {
   if (!id) {
     return
   }
@@ -204,6 +208,27 @@ const doDelete = async (id?: number) => {
 onMounted(() => {
   fetchData()
 })
+
+// 预定义的背景色列表（排除黑白）
+const avatarColors = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+  '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52C41A',
+  '#FA8C16', '#EB2F96', '#722ED1', '#13C2C2', '#1890FF',
+  '#FF4D4F', '#52C41A', '#FAAD14', '#EB2F96', '#722ED1',
+  '#13C2C2', '#1890FF', '#FF7A45', '#36CFC9', '#FF7875',
+  '#FFC069', '#95DE64', '#5CDBD3', '#69C0FF', '#B37FEB'
+]
+
+// 根据用户ID生成固定的背景色
+const getAvatarBgColor = (userId?: string) => {
+  if (!userId) return avatarColors[0]
+  let hash = 0
+  for (let i = 0; i < userId.length; i++) {
+    hash = userId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % avatarColors.length
+  return avatarColors[index]
+}
 </script>
 
 <style scoped>
@@ -298,6 +323,31 @@ onMounted(() => {
 :deep(.user-table .ant-table-thead > tr > th) {
   font-weight: 600;
   background: #fafafa;
+}
+
+/* 默认头像样式 */
+.default-avatar-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.default-avatar-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.default-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* ==================== 响应式适配 ==================== */
