@@ -314,6 +314,8 @@ import {
 import { useLoginUserStore } from '@/stores/loginUser'
 import { getAppVoById, deleteApp, deployApp } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
+import { getCodeGenTypeText } from '@/constants/codeGenType'
+import { getStaticPreviewUrl, API_BASE_URL } from '@/config/env'
 
 const route = useRoute()
 const router = useRouter()
@@ -407,7 +409,7 @@ const loadAppInfo = async () => {
       appInfo.value = res.data.data
       // 设置预览URL
       if (appInfo.value.codeGenType) {
-        previewUrl.value = `http://localhost:8123/api/static/${appInfo.value.codeGenType}_${appId.value}/index.html`
+        previewUrl.value = getStaticPreviewUrl(appInfo.value.codeGenType, appId.value)
       }
       // 如果已部署，显示预览
       if (appInfo.value.deployKey) {
@@ -788,7 +790,7 @@ const handleSend = async () => {
   try {
     // 使用fetch API处理SSE（带重试）
     const response = await fetchWithRetry(
-      `http://localhost:8123/api/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(messageText)}`,
+      `${API_BASE_URL}/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(messageText)}`,
       {
         method: 'GET',
         credentials: 'include',
@@ -953,7 +955,7 @@ const sendInitialPrompt = async () => {
 
   try {
     const response = await fetchWithRetry(
-      `http://localhost:8123/api/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(appInfo.value.initPrompt)}`,
+      `${API_BASE_URL}/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(appInfo.value.initPrompt)}`,
       {
         method: 'GET',
         credentials: 'include',

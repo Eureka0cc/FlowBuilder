@@ -36,3 +36,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+eureka-flow-builder-frontend/.env
+eureka-flow-builder-frontend/.env.*
+eureka-flow-builder-frontend/!.env.example

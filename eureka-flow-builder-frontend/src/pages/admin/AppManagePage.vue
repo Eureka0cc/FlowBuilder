@@ -18,9 +18,13 @@
           style="width: 150px"
           allowClear
         >
-          <a-select-option value="HTML">HTML</a-select-option>
-          <a-select-option value="MULTI_FILE">多文件</a-select-option>
-          <a-select-option value="VUE_PROJECT">Vue项目</a-select-option>
+          <a-select-option
+            v-for="option in CODE_GEN_TYPE_OPTIONS"
+            :key="option.value"
+            :value="option.value"
+          >
+            {{ option.label }}
+          </a-select-option>
         </a-select>
       </a-form-item>
       <a-form-item>
@@ -101,6 +105,11 @@ import {
   updateAppByAdmin,
 } from '@/api/appController'
 import UserAvatar from '@/components/UserAvatar.vue'
+import {
+  CODE_GEN_TYPE_OPTIONS,
+  getCodeGenTypeText,
+  getCodeGenTypeColor,
+} from '@/constants/codeGenType'
 
 const router = useRouter()
 
@@ -163,26 +172,6 @@ const searchParams = reactive<API.AppQueryRequest>({
   pageNum: 1,
   pageSize: 10,
 })
-
-// 获取代码生成类型文本
-const getCodeGenTypeText = (type?: string) => {
-  const typeMap: Record<string, string> = {
-    HTML: 'HTML',
-    MULTI_FILE: '多文件',
-    VUE_PROJECT: 'Vue项目',
-  }
-  return typeMap[type || ''] || type || '-'
-}
-
-// 获取代码生成类型颜色
-const getCodeGenTypeColor = (type?: string) => {
-  const colorMap: Record<string, string> = {
-    HTML: 'blue',
-    MULTI_FILE: 'green',
-    VUE_PROJECT: 'purple',
-  }
-  return colorMap[type || ''] || 'default'
-}
 
 // 获取数据
 const fetchData = async () => {

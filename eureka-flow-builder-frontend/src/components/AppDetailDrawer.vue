@@ -64,6 +64,7 @@ import { computed } from 'vue'
 import dayjs from 'dayjs'
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons-vue'
 import UserAvatar from './UserAvatar.vue'
+import { getCodeGenTypeText } from '@/constants/codeGenType'
 
 interface User {
   id?: string
@@ -136,15 +137,6 @@ const formatCreateTime = (time?: string): string => {
   return dayjs(time).format('YYYY-MM-DD HH:mm:ss')
 }
 
-// 获取代码生成类型文本
-const getCodeGenTypeText = (type?: string): string => {
-  const typeMap: Record<string, string> = {
-    HTML: '单页应用',
-    MULTI_FILE: '多文件应用',
-    VUE_PROJECT: 'Vue项目',
-  }
-  return typeMap[type || ''] || '应用'
-}
 </script>
 
 <style scoped>

@@ -113,6 +113,7 @@ import {
   getAppVoByIdByAdmin,
   updateAppByAdmin,
 } from '@/api/appController'
+import { getCodeGenTypeText } from '@/constants/codeGenType'
 
 const route = useRoute()
 const router = useRouter()
@@ -138,16 +139,6 @@ const formState = ref<API.AppUpdateRequest & { priority?: number; cover?: string
 // 加载和提交状态
 const loading = ref(false)
 const submitting = ref(false)
-
-// 获取代码生成类型文本
-const getCodeGenTypeText = (type?: string) => {
-  const typeMap: Record<string, string> = {
-    HTML: '单页HTML',
-    MULTI_FILE: '多文件应用',
-    VUE_PROJECT: 'Vue项目',
-  }
-  return typeMap[type || ''] || type || '未知类型'
-}
 
 // 加载应用信息
 const loadAppInfo = async () => {

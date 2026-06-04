@@ -162,6 +162,7 @@ import {
 import { useLoginUserStore } from '@/stores/loginUser'
 import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'
 import AppCard from '@/components/AppCard.vue'
+import { getDeployUrl } from '@/config/env'
 
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
@@ -211,16 +212,6 @@ const formatTime = (time?: string) => {
   }
 }
 
-// 获取代码生成类型文本
-const getCodeGenTypeText = (type?: string) => {
-  const typeMap: Record<string, string> = {
-    HTML: '单页应用',
-    MULTI_FILE: '多文件应用',
-    VUE_PROJECT: 'Vue项目',
-  }
-  return typeMap[type || ''] || '应用'
-}
-
 // 点击示例
 const handleExampleClick = (example: string) => {
   promptText.value = `帮我创建一个${example}`
@@ -268,8 +259,7 @@ const goToAppChat = (appId?: string) => {
 // 新窗口打开部署的应用
 const openDeployedApp = (deployKey?: string) => {
   if (!deployKey) return
-  // 部署地址格式：http://localhost:8123/api/deploy/{deployKey}/index.html
-  window.open(`http://localhost:8123/api/deploy/${deployKey}/index.html`, '_blank')
+  window.open(getDeployUrl(deployKey), '_blank')
 }
 
 // 加载我的应用
