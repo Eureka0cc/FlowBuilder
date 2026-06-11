@@ -19,10 +19,20 @@ public class ToolRequestMessage extends StreamMessage {
 
     private String arguments;
 
+    /**
+     * 同一次工具调用在流式分片中的序号，用于去重展示
+     */
+    private Integer requestIndex;
+
     public ToolRequestMessage(ToolExecutionRequest toolExecutionRequest) {
+        this(toolExecutionRequest, null);
+    }
+
+    public ToolRequestMessage(ToolExecutionRequest toolExecutionRequest, Integer requestIndex) {
         super(StreamMessageTypeEnum.TOOL_REQUEST.getValue());
         this.id = toolExecutionRequest.id();
         this.name = toolExecutionRequest.name();
         this.arguments = toolExecutionRequest.arguments();
+        this.requestIndex = requestIndex;
     }
 }

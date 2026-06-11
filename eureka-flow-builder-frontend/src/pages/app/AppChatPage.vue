@@ -52,6 +52,11 @@
       <div class="chat-section" :class="{ 'with-preview': showPreview }">
         <!-- 消息区域 -->
         <div ref="messagesContainer" class="messages-container">
+          <div v-if="hasMoreHistory" class="load-more-wrapper">
+            <a-button type="link" :loading="loadingMoreHistory" @click="loadMoreHistory">
+              加载更多
+            </a-button>
+          </div>
           <div
             v-for="(msg, index) in messages"
             :key="msg.id || index"
@@ -98,6 +103,25 @@
 
         <!-- 输入区域 -->
         <div class="input-section">
+          <a-alert
+            v-if="selectedElement"
+            type="info"
+            show-icon
+            closable
+            class="selected-element-alert"
+            message="已选中页面元素"
+            @close="clearSelectedElement(getPreviewIframe())"
+          >
+            <template #description>
+              <div class="selected-element-detail">
+                <span class="element-tag">&lt;{{ selectedElement.tagName }}&gt;</span>
+                <code class="element-selector">{{ selectedElement.selector }}</code>
+                <span v-if="selectedElement.textContent" class="element-text">
+                  {{ selectedElement.textContent }}
+                </span>
+              </div>
+            </template>
+          </a-alert>
           <a-tooltip
             v-if="!isAppOwner"
             title="无法在别人的作品下对话哦~"
@@ -116,31 +140,48 @@
           </a-tooltip>
           <a-textarea
             v-else
+            :key="inputKey"
             v-model:value="inputMessage"
-            :placeholder="
-              generating ? 'AI正在生成中...' : '描述越详细，页面越具体，可以一步一步完善生成效果'
-            "
+            :placeholder="inputPlaceholder"
             :auto-size="{ minRows: 2, maxRows: 4 }"
             class="chat-input"
             :disabled="generating"
             @keydown.enter.prevent="handleSend"
           />
           <div class="input-actions">
-            <div class="left-actions">
-              <a-button type="text" class="action-btn" :disabled="generating || !isAppOwner">
-                <paper-clip-outlined />
-                上传
-              </a-button>
+            <a-tooltip
+              v-if="showVisualEditorButton"
+              :title="isEditMode ? '退出点选模式' : '点击后可在右侧预览中选择页面元素进行修改'"
+            >
               <a-button
-                type="text"
-                class="action-btn"
-                :disabled="generating || !isAppOwner"
-                @click="optimizePrompt"
+                :type="isEditMode ? 'primary' : 'default'"
+                class="edit-mode-btn"
+                :class="{ 'edit-mode-btn-labeled': isWideScreen }"
+                @click="toggleEditMode(getPreviewIframe())"
               >
-                <thunderbolt-outlined />
-                优化
+                <aim-outlined />
+                <span v-if="isWideScreen" class="edit-mode-label">
+                  {{ isEditMode ? '退出点选' : '点选修改' }}
+                </span>
               </a-button>
-            </div>
+            </a-tooltip>
+            <a-tooltip
+              v-else-if="showVisualEditorWaiting"
+              title="等待预览加载完成后可使用可视化编辑"
+            >
+              <a-button class="edit-mode-btn edit-mode-btn-labeled" disabled>
+                <aim-outlined />
+                <span class="edit-mode-label">点选修改</span>
+              </a-button>
+            </a-tooltip>
+            <a-tooltip
+              v-else-if="showVisualEditorMobileHint"
+              title="请在大屏设备（宽度大于 992px）使用可视化编辑"
+            >
+              <a-button shape="circle" class="edit-mode-btn" disabled>
+                <aim-outlined />
+              </a-button>
+            </a-tooltip>
             <a-button
               v-if="generating"
               type="primary"
@@ -174,7 +215,17 @@
             刷新
           </a-button>
         </div>
-        <div class="preview-frame-wrapper">
+        <div class="preview-frame-wrapper" :class="{ 'edit-mode-active': isEditMode }">
+          <div
+            v-if="isEditMode && previewUrl && previewBuildReady && !generating"
+            class="edit-mode-banner"
+          >
+            <aim-outlined />
+            <span>点击预览中的页面元素进行选择，然后在左侧描述你想如何修改</span>
+            <a-button type="link" size="small" class="edit-mode-exit-btn" @click="toggleEditMode(getPreviewIframe())">
+              退出
+            </a-button>
+          </div>
           <!-- 生成中状态：显示 Q 弹加载动画 -->
           <div v-if="generating" class="generating-loader">
             <div class="loader-container">
@@ -188,16 +239,48 @@
               </div>
             </div>
           </div>
+          <!-- Vue 工程构建中 -->
+          <div
+            v-else-if="isVueProject && previewBuildStatus === 'building'"
+            class="preview-build-status"
+          >
+            <div class="loader-container">
+              <div class="shark-wrapper">
+                <img src="@/assets/shark.svg" class="shark-icon" alt="building" />
+              </div>
+              <div class="loader-shadow"></div>
+              <div class="loader-text">
+                <span class="loading-text">{{ previewBuildMessage || '正在安装依赖并构建项目，请稍候' }}</span>
+                <span class="loading-dots">...</span>
+              </div>
+            </div>
+          </div>
+          <!-- Vue 工程构建失败 -->
+          <div
+            v-else-if="isVueProject && previewBuildStatus === 'failed'"
+            class="preview-build-error"
+          >
+            <a-result status="error" title="预览构建失败">
+              <template #subTitle>
+                <div class="build-error-message">{{ previewBuildMessage }}</div>
+              </template>
+              <template #extra>
+                <a-button type="primary" @click="checkPreviewBuildStatus(true)">重新检查</a-button>
+              </template>
+            </a-result>
+          </div>
           <!-- 生成完成：显示预览 iframe -->
           <iframe
-            v-else-if="previewUrl"
+            v-else-if="previewUrl && previewBuildReady"
+            ref="previewIframeRef"
             :key="iframeKey"
-            :src="previewUrl"
+            :src="previewSrc"
             class="preview-frame"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            @load="onPreviewIframeLoad"
           ></iframe>
           <div v-else class="preview-placeholder">
-            <span>预览加载中...</span>
+            <span>{{ isVueProject ? '等待构建完成...' : '预览加载中...' }}</span>
           </div>
         </div>
       </div>
@@ -299,8 +382,6 @@ import {
   CloudUploadOutlined,
   UserOutlined,
   RobotOutlined,
-  PaperClipOutlined,
-  ThunderboltOutlined,
   ArrowUpOutlined,
   LoadingOutlined,
   FileTextOutlined,
@@ -310,11 +391,13 @@ import {
   InfoCircleOutlined,
   EditOutlined,
   DeleteOutlined,
+  AimOutlined,
 } from '@ant-design/icons-vue'
+import { useVisualEditor } from '@/utils/visualEditor'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { getAppVoById, deleteApp, deployApp } from '@/api/appController'
+import { getAppVoById, deleteApp, deployApp, getVuePreviewBuildStatus } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
-import { getCodeGenTypeText } from '@/constants/codeGenType'
+import { getCodeGenTypeText, CodeGenTypeEnum } from '@/constants/codeGenType'
 import { getStaticPreviewUrl, API_BASE_URL } from '@/config/env'
 
 const route = useRoute()
@@ -330,8 +413,15 @@ const appInfo = ref<API.AppVO>()
 // 消息列表
 const messages = ref<API.ChatHistory[]>([])
 
+// 游标分页：每页条数
+const CHAT_HISTORY_PAGE_SIZE = 10
+const hasMoreHistory = ref(false)
+const loadingMoreHistory = ref(false)
+const historyCursor = ref<string>()
+
 // 输入消息
 const inputMessage = ref('')
+const inputKey = ref(0)
 
 // 状态
 const sending = ref(false)
@@ -346,6 +436,26 @@ const showPreview = ref(true)
 const previewUrl = ref('')
 const canDeploy = ref(false)
 const iframeKey = ref(0) // 用于强制刷新iframe
+const previewBuildStatus = ref<'none' | 'building' | 'success' | 'failed'>('none')
+const previewBuildMessage = ref('')
+const previewBuildReady = ref(false)
+const previewCacheVersion = ref(0)
+const currentGenerationStartedAt = ref(0)
+const sawBuildingSinceGeneration = ref(false)
+const isAwaitingPreviewRebuild = ref(false)
+
+let previewPollTimer: ReturnType<typeof setInterval> | null = null
+let previewPollTimeout: ReturnType<typeof setTimeout> | null = null
+
+const previewSrc = computed(() => {
+  if (!previewUrl.value) return ''
+  const separator = previewUrl.value.includes('?') ? '&' : '?'
+  return `${previewUrl.value}${separator}v=${previewCacheVersion.value}`
+})
+
+const isVueProject = computed(
+  () => appInfo.value?.codeGenType === CodeGenTypeEnum.VUE_PROJECT
+)
 
 // 部署弹窗
 const deployModalVisible = ref(false)
@@ -356,6 +466,62 @@ const showAppDetailDrawer = ref(false)
 
 // 消息容器ref
 const messagesContainer = ref<HTMLElement>()
+
+// 预览 iframe ref
+const previewIframeRef = ref<HTMLIFrameElement>()
+
+const getPreviewIframe = () => previewIframeRef.value ?? null
+
+// 可视化编辑
+const {
+  isEditMode,
+  selectedElement,
+  canUseVisualEditor,
+  reattachIframe,
+  exitEditMode,
+  clearSelectedElement,
+  toggleEditMode,
+  buildPromptWithElement,
+} = useVisualEditor({
+  previewReady: () => showPreview.value && previewBuildReady.value && !!previewUrl.value,
+  onInjectFailed: () => {
+    message.warning('无法在预览页面注入编辑脚本，请确认预览地址与当前页面同源后刷新重试')
+  },
+})
+
+const isWideScreen = ref(true)
+
+const updateScreenSize = () => {
+  isWideScreen.value = window.innerWidth > 992
+}
+
+const showVisualEditorButton = computed(
+  () => isAppOwner.value && !generating.value && isWideScreen.value && canUseVisualEditor.value,
+)
+
+const showVisualEditorWaiting = computed(
+  () =>
+    isAppOwner.value &&
+    !generating.value &&
+    isWideScreen.value &&
+    showPreview.value &&
+    !canUseVisualEditor.value,
+)
+
+const showVisualEditorMobileHint = computed(
+  () => isAppOwner.value && !generating.value && !isWideScreen.value,
+)
+
+const inputPlaceholder = computed(() => {
+  if (generating.value) return 'AI正在生成中...'
+  if (selectedElement.value) return '描述你想如何修改选中的元素...'
+  if (isEditMode.value) return '点击右侧预览选择元素，或先输入修改描述...'
+  return '请描述你想生成的网站，越详细效果越好哦'
+})
+
+const onPreviewIframeLoad = () => {
+  reattachIframe(getPreviewIframe())
+}
 
 // 滚动到底部
 const scrollToBottom = () => {
@@ -411,6 +577,12 @@ const loadAppInfo = async () => {
       if (appInfo.value.codeGenType) {
         previewUrl.value = getStaticPreviewUrl(appInfo.value.codeGenType, appId.value)
       }
+      if (isVueProject.value) {
+        await checkPreviewBuildStatus()
+      } else {
+        previewBuildReady.value = true
+        previewBuildStatus.value = 'success'
+      }
       // 如果已部署，显示预览
       if (appInfo.value.deployKey) {
         showPreview.value = true
@@ -424,40 +596,82 @@ const loadAppInfo = async () => {
   }
 }
 
-// 加载聊天历史
+// 根据已加载消息决定是否展示网站预览
+const updatePreviewByHistory = () => {
+  const hasAiMessage = messages.value.some((msg) => msg.messageType === 'ai')
+  if (messages.value.length >= 2 || hasAiMessage) {
+    showPreview.value = true
+    canDeploy.value = true
+    if (isVueProject.value) {
+      checkPreviewBuildStatus()
+    } else {
+      refreshPreviewFrame()
+    }
+  }
+}
+
+// 加载聊天历史（游标分页，首次加载最近一页）
 const loadChatHistory = async () => {
   try {
     const res = await listAppChatHistory({
       appId: appId.value,
-      pageSize: 50,
+      pageSize: CHAT_HISTORY_PAGE_SIZE,
     })
     if (res.data.code === 0 && res.data.data) {
-      // 后端返回的是按时间倒序，需要反转成正序（最早的在前）
       const records = res.data.data.records || []
-      console.log(
-        '后端返回的消息:',
-        records.map((m: any) => ({ id: m.id, type: m.messageType, time: m.createTime })),
-      )
-      // 使用 slice 创建新数组再反转，避免修改原数组
+      hasMoreHistory.value = records.length >= CHAT_HISTORY_PAGE_SIZE
       messages.value = records.slice().reverse()
-      console.log(
-        '反转后的消息:',
-        messages.value.map((m: any) => ({ id: m.id, type: m.messageType })),
-      )
-      // 如果有消息，显示预览区域
-      if (messages.value.length > 0) {
-        const hasAiMessage = messages.value.some((msg) => msg.messageType === 'ai')
-        if (hasAiMessage) {
-          showPreview.value = true
-          canDeploy.value = true
-          // 如果有AI消息，尝试刷新预览
-          refreshPreviewFrame()
-        }
+      if (records.length > 0) {
+        historyCursor.value = records[records.length - 1].createTime
+      } else {
+        historyCursor.value = undefined
       }
+      updatePreviewByHistory()
       scrollToBottom()
     }
   } catch (error) {
     message.error('加载聊天历史失败')
+  }
+}
+
+// 加载更早的历史消息（追加到列表头部）
+const loadMoreHistory = async () => {
+  if (!hasMoreHistory.value || loadingMoreHistory.value || !historyCursor.value) {
+    return
+  }
+  loadingMoreHistory.value = true
+  const container = messagesContainer.value
+  const prevScrollHeight = container?.scrollHeight ?? 0
+  try {
+    const res = await listAppChatHistory({
+      appId: appId.value,
+      pageSize: CHAT_HISTORY_PAGE_SIZE,
+      lastCreateTime: historyCursor.value,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      const records = res.data.data.records || []
+      hasMoreHistory.value = records.length >= CHAT_HISTORY_PAGE_SIZE
+      if (records.length > 0) {
+        const olderMessages = records.slice().reverse()
+        const existingIds = new Set(messages.value.map((m) => m.id).filter(Boolean))
+        const newMessages = olderMessages.filter((m) => !m.id || !existingIds.has(m.id))
+        messages.value = [...newMessages, ...messages.value]
+        historyCursor.value = records[records.length - 1].createTime
+        nextTick(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - prevScrollHeight
+          }
+        })
+      } else {
+        hasMoreHistory.value = false
+      }
+    } else {
+      message.error('加载更多失败：' + res.data.message)
+    }
+  } catch (error) {
+    message.error('加载更多失败')
+  } finally {
+    loadingMoreHistory.value = false
   }
 }
 
@@ -671,7 +885,8 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
             // 处理错误消息
             else if (parsed.error) {
               forceUpdate() // 先保存已接收的内容
-              throw new Error(parsed.error)
+              const errorMsg = typeof parsed.error === 'string' ? parsed.error : (parsed.message || '未知错误')
+              throw new Error(errorMsg)
             }
           } catch (e) {
             // JSON解析失败
@@ -695,6 +910,12 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
             forceUpdate() // 确保所有内容都已更新
             generating.value = false
             canDeploy.value = true
+            if (isVueProject.value && hasReceivedContent) {
+              sawBuildingSinceGeneration.value = false
+              previewBuildReady.value = false
+              previewBuildStatus.value = 'building'
+              previewBuildMessage.value = '正在重新构建预览...'
+            }
           } else if (eventType === 'error') {
             forceUpdate()
             throw new Error('服务器报告错误')
@@ -712,7 +933,8 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
     if (messages.value[aiMessageIndex]) {
       const currentContent = messages.value[aiMessageIndex].message
       if (!currentContent || currentContent.trim() === '') {
-        messages.value[aiMessageIndex].message = '❌ 生成失败：连接中断，请重试'
+        const errMsg = error instanceof Error ? error.message : '连接中断'
+        messages.value[aiMessageIndex].message = '❌ 生成失败：' + errMsg
       } else {
         messages.value[aiMessageIndex].message += '\n\n---\n⚠️ 生成中断，部分内容可能未保存'
       }
@@ -736,11 +958,16 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
     // 清除代码进度
     codeProgress.value = []
 
-    // 刷新预览iframe（延迟确保文件已保存）
+    // 刷新预览 iframe（Vue 工程需等待异步 npm build）
     if (hasReceivedContent) {
-      setTimeout(() => {
-        refreshPreviewFrame()
-      }, 1500)
+      if (appInfo.value?.codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
+        scheduleVuePreviewRefresh()
+      } else {
+        setTimeout(() => {
+          previewCacheVersion.value = Date.now()
+          refreshPreviewFrame()
+        }, 1500)
+      }
     }
   }
 }
@@ -761,15 +988,25 @@ const cancelGeneration = () => {
 const handleSend = async () => {
   if (!inputMessage.value.trim() || sending.value || generating.value) return
 
-  const messageText = inputMessage.value.trim()
+  const displayMessage = inputMessage.value.trim()
+  const apiMessage = buildPromptWithElement(displayMessage)
+
+  // 先清空输入并等待 DOM 同步，再切换 disabled，避免 Textarea 保留旧值
   inputMessage.value = ''
+  inputKey.value++
+  await nextTick()
+
   sending.value = true
   generating.value = true
+  currentGenerationStartedAt.value = Date.now()
 
-  // 添加用户消息
+  // 发送后退出编辑模式并清除选中元素
+  exitEditMode(getPreviewIframe())
+
+  // 添加用户消息（展示原始输入，不含元素上下文）
   messages.value.push({
     messageType: 'user',
-    message: messageText,
+    message: displayMessage,
     appId: appId.value,
     userId: loginUserStore.loginUser.id || '0',
   })
@@ -790,7 +1027,7 @@ const handleSend = async () => {
   try {
     // 使用fetch API处理SSE（带重试）
     const response = await fetchWithRetry(
-      `${API_BASE_URL}/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(messageText)}`,
+      `${API_BASE_URL}/app/chat/gen/code?appId=${appId.value}&message=${encodeURIComponent(apiMessage)}`,
       {
         method: 'GET',
         credentials: 'include',
@@ -811,16 +1048,6 @@ const handleSend = async () => {
     generating.value = false
     currentAbortController = null
   }
-}
-
-// 优化提示词
-const optimizePrompt = () => {
-  if (!inputMessage.value.trim()) {
-    message.warning('请先输入提示词')
-    return
-  }
-  // 这里可以调用优化API
-  message.info('提示词优化功能开发中...')
 }
 
 // 部署应用
@@ -857,15 +1084,124 @@ const openDeployedUrl = () => {
   window.open(deployedUrl.value, '_blank')
 }
 
+const stopPreviewPolling = () => {
+  if (previewPollTimer) {
+    clearInterval(previewPollTimer)
+    previewPollTimer = null
+  }
+  if (previewPollTimeout) {
+    clearTimeout(previewPollTimeout)
+    previewPollTimeout = null
+  }
+}
+
+const applyPreviewRefresh = (buildTimestamp?: number) => {
+  previewCacheVersion.value = buildTimestamp || Date.now()
+  refreshPreviewFrame()
+}
+
 // 刷新预览（通过修改key强制重新渲染iframe）
-const refreshPreview = () => {
-  iframeKey.value++
+const refreshPreview = async () => {
+  if (isVueProject.value) {
+    await checkPreviewBuildStatus(true)
+    return
+  }
+  previewCacheVersion.value = Date.now()
+  refreshPreviewFrame()
   message.success('预览已刷新')
 }
 
 // 刷新预览iframe（不显示提示）
 const refreshPreviewFrame = () => {
   iframeKey.value++
+}
+
+// 查询 Vue 工程预览构建状态
+const checkPreviewBuildStatus = async (showToast = false) => {
+  if (!isVueProject.value) {
+    previewBuildReady.value = true
+    previewBuildStatus.value = 'success'
+    return
+  }
+  try {
+    const res = await getVuePreviewBuildStatus({ appId: appId.value })
+    if (res.data.code === 0 && res.data.data) {
+      const data = res.data.data
+      const status = (data.status as typeof previewBuildStatus.value) || 'none'
+      previewBuildMessage.value = data.message || ''
+
+      if (status === 'building') {
+        sawBuildingSinceGeneration.value = true
+        previewBuildStatus.value = 'building'
+        previewBuildReady.value = false
+        return
+      }
+
+      if (status === 'failed' || data.ready === false) {
+        previewBuildStatus.value = 'failed'
+        previewBuildReady.value = false
+        isAwaitingPreviewRebuild.value = false
+        stopPreviewPolling()
+        if (showToast) {
+          message.error(previewBuildMessage.value || '预览构建失败')
+        }
+        return
+      }
+
+      if (data.ready) {
+        const buildTimestamp = data.timestamp || 0
+        const canAccept =
+          showToast ||
+          !isAwaitingPreviewRebuild.value ||
+          sawBuildingSinceGeneration.value ||
+          buildTimestamp > currentGenerationStartedAt.value
+
+        if (!canAccept) {
+          return
+        }
+
+        previewBuildStatus.value = 'success'
+        previewBuildReady.value = true
+        isAwaitingPreviewRebuild.value = false
+        stopPreviewPolling()
+        applyPreviewRefresh(buildTimestamp)
+        if (showToast) {
+          message.success('预览已刷新')
+        }
+      }
+    }
+  } catch (error) {
+    previewBuildStatus.value = 'failed'
+    previewBuildMessage.value = '无法获取构建状态，请稍后重试'
+    previewBuildReady.value = false
+    isAwaitingPreviewRebuild.value = false
+    stopPreviewPolling()
+  }
+}
+
+// Vue 工程需在 npm install + build 完成后才有 dist，轮询构建状态直至成功或超时
+const scheduleVuePreviewRefresh = () => {
+  if (!isVueProject.value) {
+    return
+  }
+
+  stopPreviewPolling()
+  isAwaitingPreviewRebuild.value = true
+  sawBuildingSinceGeneration.value = false
+  previewBuildStatus.value = 'building'
+  previewBuildReady.value = false
+  previewBuildMessage.value = '正在重新构建预览...'
+
+  void checkPreviewBuildStatus()
+  previewPollTimer = setInterval(() => {
+    void checkPreviewBuildStatus()
+  }, 3000)
+  previewPollTimeout = setTimeout(() => {
+    stopPreviewPolling()
+    if (isAwaitingPreviewRebuild.value) {
+      previewBuildMessage.value = '构建时间较长，请稍后点击刷新按钮重试'
+    }
+  }, 180000)
 }
 
 // 跳转到编辑页面
@@ -897,12 +1233,6 @@ const confirmDeleteApp = () => {
   })
 }
 
-// 是否是新创建的应用（从首页创建后跳转过来）
-const isNewApp = computed(() => route.query.new === 'true')
-
-// 是否是查看模式（从卡片点击查看对话跳转过来）
-const isViewMode = computed(() => route.query.view === '1')
-
 // 是否是应用所有者
 const isAppOwner = computed(() => {
   if (!appInfo.value?.userId || !loginUserStore.loginUser.id) return false
@@ -931,6 +1261,7 @@ const sendInitialPrompt = async () => {
 
   initialPromptSent.value = true
   generating.value = true
+  currentGenerationStartedAt.value = Date.now()
 
   // 添加用户消息（使用初始提示词）
   messages.value.push({
@@ -977,6 +1308,9 @@ const sendInitialPrompt = async () => {
 
 // 页面加载
 onMounted(() => {
+  updateScreenSize()
+  window.addEventListener('resize', updateScreenSize)
+
   if (!appId.value) {
     message.error('应用ID不能为空')
     router.push('/')
@@ -986,8 +1320,8 @@ onMounted(() => {
   window.scrollTo(0, 0)
   loadAppInfo().then(() => {
     loadChatHistory().then(() => {
-      // 如果是新创建的应用且没有聊天历史，且不是查看模式，自动发送初始提示词
-      if (isNewApp.value && messages.value.length === 0 && !isViewMode.value) {
+      // 自己的应用且无对话历史时，自动发送初始提示词
+      if (isAppOwner.value && messages.value.length === 0 && appInfo.value?.initPrompt) {
         sendInitialPrompt()
       }
     })
@@ -997,8 +1331,34 @@ onMounted(() => {
 // 监听消息变化，自动滚动
 watch(messages, scrollToBottom, { deep: true })
 
+// 预览就绪或生成结束后重新绑定 iframe 脚本
+watch(previewBuildReady, async (ready) => {
+  if (ready) {
+    await nextTick()
+    reattachIframe(getPreviewIframe())
+  }
+})
+
+watch(generating, async (val, oldVal) => {
+  if (oldVal && !val) {
+    await nextTick()
+    if (previewBuildReady.value) {
+      reattachIframe(getPreviewIframe())
+    }
+  }
+})
+
+watch(iframeKey, async () => {
+  if (isEditMode.value && previewBuildReady.value) {
+    await nextTick()
+    reattachIframe(getPreviewIframe())
+  }
+})
+
 // 页面卸载时清理
 onUnmounted(() => {
+  window.removeEventListener('resize', updateScreenSize)
+  stopPreviewPolling()
   if (currentAbortController) {
     currentAbortController.abort()
     currentAbortController = null
@@ -1016,13 +1376,14 @@ onUnmounted(() => {
 
 /* 顶部栏 */
 .chat-header {
-  height: 56px;
+  height: 48px;
   border-bottom: 1px solid #f0f0f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 16px;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -1142,7 +1503,9 @@ onUnmounted(() => {
 }
 
 .chat-section.with-preview {
-  width: 50%;
+  flex: 2;
+  width: auto;
+  min-width: 0;
   border-right: 1px solid #f0f0f0;
 }
 
@@ -1150,15 +1513,20 @@ onUnmounted(() => {
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+}
+
+.load-more-wrapper {
+  text-align: center;
+  padding-bottom: 8px;
 }
 
 .message-item {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
 .user-message {
@@ -1170,9 +1538,9 @@ onUnmounted(() => {
 }
 
 .message-bubble {
-  max-width: 70%;
-  padding: 12px 16px;
-  border-radius: 12px;
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 10px;
   background: #f5f5f5;
 }
 
@@ -1269,8 +1637,8 @@ onUnmounted(() => {
   background: #f6ffed;
   border: 1px solid #b7eb8f;
   border-radius: 8px;
-  padding: 16px;
-  margin: 8px 24px;
+  padding: 12px;
+  margin: 4px 0;
 }
 
 .progress-title {
@@ -1315,16 +1683,18 @@ onUnmounted(() => {
 /* 输入区域 */
 .input-section {
   border-top: 1px solid #f0f0f0;
-  padding: 16px 24px;
+  padding: 10px 16px;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .chat-input {
-  border: none;
+  border: none !important;
   resize: none;
-  background: #f5f5f5;
-  border-radius: 12px;
-  padding: 12px 16px;
+  background: #f7f8fa;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: none !important;
 }
 
 .chat-input.disabled-input {
@@ -1339,23 +1709,64 @@ onUnmounted(() => {
 }
 
 .chat-input:focus {
-  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  box-shadow: none !important;
+  background: #f0f2f5;
+}
+
+.selected-element-alert {
+  margin-bottom: 8px;
+}
+
+.selected-element-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.element-tag {
+  color: #1677ff;
+  font-weight: 500;
+}
+
+.element-selector {
+  display: block;
+  padding: 2px 6px;
+  background: #f5f5f5;
+  border-radius: 4px;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.element-text {
+  color: #666;
+  word-break: break-word;
 }
 
 .input-actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  margin-top: 12px;
-}
-
-.left-actions {
-  display: flex;
   gap: 8px;
+  margin-top: 8px;
 }
 
-.action-btn {
-  color: #666;
+.edit-mode-btn {
+  border-color: #d9d9d9;
+}
+
+.edit-mode-btn-labeled {
+  border-radius: 20px;
+  height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-mode-label {
+  font-size: 12px;
 }
 
 .send-btn {
@@ -1388,22 +1799,25 @@ onUnmounted(() => {
   }
 }
 
-/* 右侧预览区域 */
+/* 右侧预览区域（与左侧 2:3） */
 .preview-section {
-  width: 50%;
+  flex: 3;
+  width: auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   background: #f5f5f5;
 }
 
 .preview-header {
-  height: 48px;
+  height: 40px;
   background: #fff;
   border-bottom: 1px solid #f0f0f0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 12px;
+  flex-shrink: 0;
 }
 
 .preview-title {
@@ -1412,8 +1826,54 @@ onUnmounted(() => {
 
 .preview-frame-wrapper {
   flex: 1;
-  padding: 16px;
+  padding: 8px;
   overflow: hidden;
+  position: relative;
+}
+
+.preview-frame-wrapper.edit-mode-active {
+  box-shadow: inset 0 0 0 3px #1677ff;
+  border-radius: 8px;
+  background: rgba(22, 119, 255, 0.04);
+}
+
+.preview-frame-wrapper.edit-mode-active .preview-frame {
+  cursor: crosshair;
+}
+
+.edit-mode-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: calc(100% - 32px);
+  background: rgba(22, 119, 255, 0.95);
+  color: #fff;
+  padding: 8px 12px 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.35);
+  pointer-events: none;
+}
+
+.edit-mode-banner > span {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.edit-mode-exit-btn {
+  color: #fff !important;
+  flex-shrink: 0;
+  padding: 0 4px;
+  pointer-events: auto;
+}
+
+.edit-mode-exit-btn:hover {
+  color: rgba(255, 255, 255, 0.85) !important;
 }
 
 .preview-frame {
@@ -1433,6 +1893,37 @@ onUnmounted(() => {
   justify-content: center;
   color: #999;
   font-size: 24px;
+}
+
+.preview-build-status {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
+}
+
+.preview-build-error {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: #fff;
+}
+
+.build-error-message {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 /* ==================== Q弹加载动画 - 美团风格 ==================== */
@@ -1589,6 +2080,7 @@ onUnmounted(() => {
 /* 响应式 */
 @media (max-width: 992px) {
   .chat-section.with-preview {
+    flex: 1;
     width: 100%;
     border-right: none;
   }
@@ -1604,7 +2096,11 @@ onUnmounted(() => {
   }
 
   .messages-container {
-    padding: 16px;
+    padding: 10px 12px;
+  }
+
+  .input-section {
+    padding: 8px 12px;
   }
 
   .message-bubble {

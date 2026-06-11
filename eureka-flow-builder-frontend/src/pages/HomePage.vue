@@ -1,65 +1,49 @@
 <template>
   <div id="homePage">
-    <!-- 核心交互区域（Hero Section）- 限制最大宽度并居中 -->
-    <div class="hero-container">
-      <!-- 网站标题区域 -->
-      <div class="hero-section">
-        <h1 class="main-title">
-          一句话
-          <span class="logo-wrapper">
-            <img src="@/assets/shark.svg" alt="logo" class="title-logo" />
-          </span>
-          呈所想
-        </h1>
-        <p class="sub-title">与 AI 对话轻松创建应用和网站</p>
-      </div>
+    <!-- 科技感渐变 Hero 区域 -->
+    <div class="hero-banner">
+      <div class="hero-bg-grid" aria-hidden="true"></div>
+      <div class="hero-container">
+        <div class="hero-section">
+          <h1 class="main-title">SeekWeb AI 应用生成平台</h1>
+          <p class="sub-title">一句话轻松创建网站应用</p>
+        </div>
 
-      <!-- 提示词输入框 -->
-      <div class="input-section">
-        <a-textarea
-          v-model:value="promptText"
-          :placeholder="'使用 NoCode 创建一个高效的小工具，帮我计算......'"
-          :auto-size="{ minRows: 3, maxRows: 6 }"
-          class="prompt-input"
-          @keydown.ctrl.enter="handleCreateApp"
-        />
-        <div class="input-actions">
-          <div class="left-actions">
-            <a-button type="text" class="action-btn">
-              <paper-clip-outlined />
-              上传
-            </a-button>
-            <a-button type="text" class="action-btn">
-              <thunderbolt-outlined />
-              优化
+        <div class="input-section">
+          <a-textarea
+            v-model:value="promptText"
+            placeholder="帮我创建个人博客网站"
+            :auto-size="{ minRows: 3, maxRows: 6 }"
+            class="prompt-input"
+            @keydown.ctrl.enter="handleCreateApp"
+          />
+          <div class="input-actions">
+            <a-button
+              type="primary"
+              shape="circle"
+              size="large"
+              class="send-btn"
+              :loading="creating"
+              :disabled="!promptText.trim() || creating"
+              @click="handleCreateApp"
+            >
+              <template #icon>
+                <arrow-up-outlined />
+              </template>
             </a-button>
           </div>
-          <a-button
-            type="primary"
-            shape="circle"
-            size="large"
-            class="send-btn"
-            :loading="creating"
-            :disabled="!promptText.trim() || creating"
-            @click="handleCreateApp"
-          >
-            <template #icon>
-              <arrow-up-outlined />
-            </template>
-          </a-button>
         </div>
-      </div>
 
-      <!-- 快速示例标签 -->
-      <div class="examples-section">
-        <a-tag
-          v-for="example in quickExamples"
-          :key="example"
-          class="example-tag"
-          @click="handleExampleClick(example)"
-        >
-          {{ example }}
-        </a-tag>
+        <div class="examples-section">
+          <a-tag
+            v-for="example in quickExamples"
+            :key="example.label"
+            class="example-tag"
+            @click="handleExampleClick(example)"
+          >
+            {{ example.label }}
+          </a-tag>
+        </div>
       </div>
     </div>
 
@@ -154,11 +138,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import {
-  PaperClipOutlined,
-  ThunderboltOutlined,
-  ArrowUpOutlined,
-} from '@ant-design/icons-vue'
+import { ArrowUpOutlined } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'
 import AppCard from '@/components/AppCard.vue'
@@ -178,8 +158,29 @@ const handleCoverError = (appId: string) => {
 const promptText = ref('')
 const creating = ref(false)
 
-// 快速示例
-const quickExamples = ['波普风电商页面', '企业网站', '电商运营后台', '暗黑话题社区']
+// 快速示例（标签 + 约 100 字具体提示词）
+const quickExamples = [
+  {
+    label: '个人博客',
+    prompt:
+      '帮我创建一个现代风格的个人技术博客网站，包含首页文章列表、文章详情页、关于我与联系方式页面。整体采用简洁浅色主题，支持 Markdown 文章展示、标签分类与搜索，移动端自适应，导航清晰，适合程序员记录学习笔记与项目复盘。',
+  },
+  {
+    label: '企业官网',
+    prompt:
+      '帮我创建一个科技公司企业官网，包含首页、产品介绍、解决方案、客户案例、新闻动态与联系我们等页面。风格专业可信，主色蓝白，突出品牌价值与核心优势，配有轮播 Banner、数据亮点展示与在线咨询入口，整体响应式布局。',
+  },
+  {
+    label: '电商落地页',
+    prompt:
+      '帮我创建一个单品电商促销落地页，包含产品卖点、用户评价、价格套餐对比、限时优惠倒计时、FAQ 常见问题与底部购买按钮。视觉吸睛、转化导向，支持商品图轮播与信任背书模块，配色活泼，移动端购买体验流畅。',
+  },
+  {
+    label: '作品集网站',
+    prompt:
+      '帮我创建一个设计师作品集展示网站，包含首页个人介绍、项目案例网格、项目详情页（含设计说明与多图展示）、技能与时间线、联系合作表单。风格高级简约，大图留白，支持分类筛选与暗色模式切换，突出视觉作品质量。',
+  },
+]
 
 // 我的应用数据
 const myApps = ref<API.AppVO[]>([])
@@ -213,8 +214,8 @@ const formatTime = (time?: string) => {
 }
 
 // 点击示例
-const handleExampleClick = (example: string) => {
-  promptText.value = `帮我创建一个${example}`
+const handleExampleClick = (example: { label: string; prompt: string }) => {
+  promptText.value = example.prompt
 }
 
 // 创建应用
@@ -236,6 +237,7 @@ const handleCreateApp = async () => {
     })
     if (res.data.code === 0 && res.data.data) {
       const appId = res.data.data
+      promptText.value = ''
       message.success('应用创建成功')
       // 跳转到对话页，标记为新应用以自动发送初始提示词
       router.push(`/app/chat/${appId}?new=true`)
@@ -250,10 +252,9 @@ const handleCreateApp = async () => {
 }
 
 // 跳转到应用对话页
-const goToAppChat = (appId?: string) => {
-  if (!appId) return
-  // 添加 view=1 参数，防止自动发送消息
-  router.push(`/app/chat/${appId}?view=1`)
+const goToAppChat = (app: API.AppVO) => {
+  if (!app.id) return
+  router.push(`/app/chat/${app.id}`)
 }
 
 // 新窗口打开部署的应用
@@ -309,137 +310,141 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* ==================== 通栏全屏基础布局 ==================== */
 #homePage {
   width: 100%;
-  background: #fff;
+  background: #f4f6fb;
 }
 
-/* ==================== 核心交互区域（限制宽度居中） ==================== */
+/* 科技感渐变 Hero */
+.hero-banner {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: linear-gradient(125deg, #020617 0%, #0f172a 28%, #1e1b4b 55%, #0c4a6e 82%, #06b6d4 120%);
+}
+
+.hero-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.hero-banner::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.25) 0%, transparent 70%);
+  pointer-events: none;
+}
+
 .hero-container {
-  max-width: 896px;
-  /* max-w-4xl 约等于 896px */
+  position: relative;
+  z-index: 1;
+  max-width: 880px;
   margin: 0 auto;
-  padding: 64px 24px 48px;
-  /* pt-16 pb-12 px-6 */
+  padding: 72px 24px 56px;
 }
 
-/* 标题区域 */
 .hero-section {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 36px;
 }
 
 .main-title {
-  font-size: 48px;
+  font-size: 44px;
   font-weight: 700;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-
-.logo-wrapper {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  background: linear-gradient(135deg, #1890ff 0%, #36cfc9 100%);
-  border-radius: 50%;
-}
-
-.title-logo {
-  width: 36px;
-  height: 36px;
-  filter: brightness(0) invert(1);
+  margin: 0 0 12px;
+  letter-spacing: 0.02em;
+  background: linear-gradient(90deg, #f8fafc 0%, #e0f2fe 45%, #67e8f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .sub-title {
   font-size: 18px;
-  color: #666;
+  color: rgba(226, 232, 240, 0.85);
   margin: 0;
+  font-weight: 400;
 }
 
-/* 输入区域 - 保持精致样式 */
 .input-section {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.96);
   border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  padding: 20px;
-  margin-bottom: 24px;
+  padding: 16px 16px 12px;
+  margin-bottom: 20px;
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  backdrop-filter: blur(12px);
 }
 
 .prompt-input {
-  border: none;
+  border: none !important;
   resize: none;
   font-size: 16px;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 4px 4px 0;
 }
 
 .prompt-input:focus {
-  box-shadow: none;
+  box-shadow: none !important;
 }
 
 .input-actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
-}
-
-.left-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.action-btn {
-  color: #666;
+  margin-top: 8px;
 }
 
 .send-btn {
-  background: #333;
+  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
   border: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transition: all 0.25s ease;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #000;
+  background: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%);
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.send-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.45);
 }
 
 .send-btn:disabled {
-  background: #ccc;
+  background: #94a3b8;
   cursor: not-allowed;
 }
 
-/* 示例标签 */
 .examples-section {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
 }
 
 .example-tag {
-  padding: 8px 16px;
+  padding: 6px 14px;
   border-radius: 20px;
   cursor: pointer;
-  transition: all 0.3s;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  transition: all 0.25s;
 }
 
 .example-tag:hover {
-  background: #1890ff;
+  background: rgba(14, 165, 233, 0.35);
+  border-color: rgba(56, 189, 248, 0.6);
   color: #fff;
 }
 
@@ -451,14 +456,12 @@ onMounted(() => {
 }
 
 .works-section {
-  background: #fafafa;
-  /* 轻微的背景色区分 */
+  background: #f4f6fb;
 }
 
 .featured-section {
   background: #fff;
-  padding-bottom: 80px;
-  /* 底部留出足够空间 */
+  padding-bottom: 64px;
 }
 
 /* 内容容器 - 控制最大宽度并居中 */
@@ -620,21 +623,15 @@ onMounted(() => {
 /* ==================== 响应式适配 ==================== */
 @media (max-width: 768px) {
   .hero-container {
-    padding: 48px 16px 36px;
+    padding: 48px 16px 40px;
   }
 
   .main-title {
-    font-size: 32px;
+    font-size: 30px;
   }
 
-  .logo-wrapper {
-    width: 40px;
-    height: 40px;
-  }
-
-  .title-logo {
-    width: 24px;
-    height: 24px;
+  .sub-title {
+    font-size: 16px;
   }
 
   .section {

@@ -115,7 +115,7 @@ public class AiCodeGeneratorFacade {
                         sink.next(JSONUtil.toJsonStr(aiResponseMessage));
                     })
                     .onPartialToolExecutionRequest((index, toolExecutionRequest) -> {
-                        ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest);
+                        ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest, index);
                         sink.next(JSONUtil.toJsonStr(toolRequestMessage));
                     })
                     .onToolExecuted((ToolExecution toolExecution) -> {
@@ -123,7 +123,10 @@ public class AiCodeGeneratorFacade {
                         sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
                     })
                     .onCompleteResponse((ChatResponse response) -> {
-                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project" + appId;
+                        String projectPath = AppConstant.getVueProjectDirPath(appId);
+                        log.info("Vue 项目 AI 对话完成，开始异步构建: {}", projectPath);
+                        // 同步写入 building，避免前端在 SSE 结束后轮询到上一次 ready=true
+                        vueProjectBuilder.markBuildStarting(projectPath);
                         vueProjectBuilder.buildProjectAsync(projectPath);
                         sink.complete();
                     })

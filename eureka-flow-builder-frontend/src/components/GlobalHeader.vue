@@ -101,6 +101,15 @@ const originItems: MenuProps['items'] = [
       return !loginUser || loginUser.userRole !== 'admin'
     }).value,
   },
+  {
+    key: '/admin/chatHistoryManage',
+    label: '对话管理',
+    title: '对话管理',
+    disabled: computed(() => {
+      const loginUser = loginUserStore.loginUser
+      return !loginUser || loginUser.userRole !== 'admin'
+    }).value,
+  },
 ]
 
 // 展示在菜单的路由数组 - 不再过滤，保持固定数量
@@ -193,7 +202,7 @@ const doLogout = async () => {
 /* 菜单包装器 - 固定宽度，防止抖动 */
 .menu-wrapper {
   flex: 0 0 auto;
-  width: 280px;
+  width: 380px;
   display: flex;
   justify-content: center;
 }

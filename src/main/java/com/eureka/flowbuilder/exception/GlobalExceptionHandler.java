@@ -1,4 +1,4 @@
-package com.eureka.flowbuilder.exception;
+﻿package com.eureka.flowbuilder.exception;
 
 import cn.hutool.json.JSONUtil;
 import com.eureka.flowbuilder.common.BaseResponse;
@@ -47,7 +47,7 @@ public class GlobalExceptionHandler {
     public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
         log.error("RuntimeException", e);
         // 尝试处理 SSE 请求
-        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), "系统错误")) {
+        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), e.getMessage())) {
             return null;
         }
         return ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
@@ -72,6 +72,11 @@ public class GlobalExceptionHandler {
         String uri = request.getRequestURI();
         if ((accept != null && accept.contains("text/event-stream")) ||
                 uri.contains("/chat/gen/code")) {
+            // Flux SSE 已开始写入时不能再 getWriter，否则会二次异常
+            if (response.isCommitted()) {
+                log.warn("SSE 响应已提交，跳过全局异常写入: {}", errorMessage);
+                return true;
+            }
             try {
                 // 设置SSE响应头
                 response.setContentType("text/event-stream");

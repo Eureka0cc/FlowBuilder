@@ -1,10 +1,12 @@
 <template>
-  <div id="userRegisterPage">
-    <h2 class="title">SeekWeb·AI - 用户注册</h2>
-    <div class="desc">零代码，生成完整应用</div>
+  <AuthCard>
     <a-form :model="formState" name="basic" autocomplete="off" @finish="handleSubmit">
       <a-form-item name="userAccount" :rules="[{ required: true, message: '请输入账号' }]">
-        <a-input v-model:value="formState.userAccount" placeholder="请输入账号" />
+        <a-input
+          v-model:value="formState.userAccount"
+          placeholder="请输入账号"
+          size="large"
+        />
       </a-form-item>
       <a-form-item
         name="userPassword"
@@ -13,7 +15,11 @@
           { min: 8, message: '密码不能小于 8 位' },
         ]"
       >
-        <a-input-password v-model:value="formState.userPassword" placeholder="请输入密码" />
+        <a-input-password
+          v-model:value="formState.userPassword"
+          placeholder="请输入密码"
+          size="large"
+        />
       </a-form-item>
       <a-form-item
         name="checkPassword"
@@ -23,24 +29,36 @@
           { validator: validatePassword },
         ]"
       >
-        <a-input-password v-model:value="formState.checkPassword" placeholder="请确认密码" />
+        <a-input-password
+          v-model:value="formState.checkPassword"
+          placeholder="请确认密码"
+          size="large"
+        />
       </a-form-item>
-      <div class="tips">
+      <div class="auth-tips">
         已有账号？
         <RouterLink to="/user/login">去登录</RouterLink>
       </div>
       <a-form-item>
-        <a-button type="primary" html-type="submit" style="width: 100%">注册</a-button>
+        <a-button
+          type="primary"
+          html-type="submit"
+          class="auth-submit-btn"
+          :loading="submitting"
+        >
+          注册
+        </a-button>
       </a-form-item>
     </a-form>
-  </div>
+  </AuthCard>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { register } from '@/api/userController.ts'
+import AuthCard from '@/components/AuthCard.vue'
 
 const formState = reactive({
   userAccount: '',
@@ -48,6 +66,7 @@ const formState = reactive({
   checkPassword: '',
 })
 
+const submitting = ref(false)
 const router = useRouter()
 
 /**
@@ -65,41 +84,21 @@ const validatePassword = (_rule: any, value: string) => {
  * @param values
  */
 const handleSubmit = async (values: any) => {
-  const res = await register(values)
-  // 注册成功，跳转到登录页面
-  if (res.data.code === 0 && res.data.data) {
-    message.success('注册成功，请登录')
-    router.push({
-      path: '/user/login',
-      replace: true,
-    })
-  } else {
-    message.error('注册失败，' + res.data.message)
+  submitting.value = true
+  try {
+    const res = await register(values)
+    // 注册成功，跳转到登录页面
+    if (res.data.code === 0 && res.data.data) {
+      message.success('注册成功，请登录')
+      router.push({
+        path: '/user/login',
+        replace: true,
+      })
+    } else {
+      message.error('注册失败，' + res.data.message)
+    }
+  } finally {
+    submitting.value = false
   }
 }
 </script>
-
-<style>
-#userRegisterPage {
-  max-width: 360px;
-  margin: 0 auto;
-}
-
-.title {
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-.desc {
-  text-align: center;
-  color: #bbb;
-  margin-bottom: 16px;
-}
-
-.tips {
-  margin-bottom: 16px;
-  color: #bbb;
-  font-size: 13px;
-  text-align: right;
-}
-</style>

@@ -84,6 +84,30 @@ const router = createRouter({
 }
 
 
+4）index.html 必须包含 Vite 入口脚本（缺一不可，否则构建后预览空白）：
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>网站标题</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+
+
+5）JavaScript 长文本与数据文件约束（避免构建语法错误）：
+
+- 禁止使用模板字符串（反引号）存储含 Markdown 的长文本；优先使用普通单引号/双引号字符串，换行写为 \n
+- 若必须使用模板字符串，内容中的反引号必须转义为 \`，代码块围栏写为 \`\`\`
+- 行内代码优先用单引号标识，如 'data'、'methods'，不要写 `data`、`methods`
+- 博客文章、说明文档等长内容推荐放在独立的 .md 文件中，通过 fetch 或 import 加载
+
+
 ## 网站内容要求
 
 - 基础布局：各个页面统一布局，必须有导航栏，尤其是主页内容必须丰富

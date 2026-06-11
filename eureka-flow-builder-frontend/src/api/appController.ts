@@ -246,6 +246,20 @@ export async function update2(body: API.App, options?: { [key: string]: any }) {
   })
 }
 
+/** 获取 Vue 工程预览构建状态 GET /app/preview/build/status */
+export async function getVuePreviewBuildStatus(
+  params: API.getVuePreviewBuildStatusParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseVueBuildStatusVO>('/app/preview/build/status', {
+    method: 'GET',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 POST /app/update */
 export async function updateApp(body: API.AppUpdateRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/app/update', {

@@ -71,6 +71,23 @@ declare namespace API {
     message?: string
   }
 
+  type VueBuildStatusVO = {
+    status?: string
+    ready?: boolean
+    message?: string
+    timestamp?: number
+  }
+
+  type BaseResponseVueBuildStatusVO = {
+    code?: number
+    data?: VueBuildStatusVO
+    message?: string
+  }
+
+  type getVuePreviewBuildStatusParams = {
+    appId: string
+  }
+
   type BaseResponseBoolean = {
     code?: number
     data?: boolean

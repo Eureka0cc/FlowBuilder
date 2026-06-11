@@ -8,6 +8,7 @@ import cn.hutool.core.util.StrUtil;
 import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingService;
 import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.eureka.flowbuilder.constant.AppConstant;
+import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.core.AiCodeGeneratorFacade;
 import com.eureka.flowbuilder.core.builder.VueProjectBuilder;
 import com.eureka.flowbuilder.core.handler.StreamHandlerExecutor;
@@ -22,6 +23,7 @@ import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import com.eureka.flowbuilder.model.vo.AppVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
+import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.eureka.flowbuilder.service.ChatHistoryService;
 import com.eureka.flowbuilder.service.ScreenshotService;
 import com.eureka.flowbuilder.service.UserService;
@@ -295,6 +297,26 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 log.error("清除 good_app_page 缓存失败", e);
             }
         });
+    }
+
+    @Override
+    public VueBuildStatusVO getVuePreviewBuildStatus(Long appId, User loginUser) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 无效");
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        if (!app.getUserId().equals(loginUser.getId())
+                && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限查看该应用构建状态");
+        }
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
+        if (codeGenTypeEnum != CodeGenTypeEnum.VUE_PROJECT) {
+            VueBuildStatusVO statusVO = new VueBuildStatusVO();
+            statusVO.setStatus(VueProjectBuilder.STATUS_SUCCESS);
+            statusVO.setReady(true);
+            statusVO.setMessage("非 Vue 工程，无需构建");
+            return statusVO;
+        }
+        return vueProjectBuilder.getBuildStatus(appId);
     }
 
     /**

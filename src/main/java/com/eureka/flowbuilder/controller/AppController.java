@@ -16,6 +16,7 @@ import com.eureka.flowbuilder.model.dto.app.*;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
 import com.eureka.flowbuilder.model.vo.AppVO;
+import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.eureka.flowbuilder.ratelimiter.annotation.RateLimit;
 import com.eureka.flowbuilder.ratelimiter.enums.RateLimitType;
 import com.eureka.flowbuilder.service.ProjectDownloadService;
@@ -97,6 +98,22 @@ public class AppController {
                                 .data("")
                                 .build()
                 ));
+    }
+
+    /**
+     * 获取 Vue 工程预览构建状态
+     *
+     * @param appId   应用 ID
+     * @param request 请求
+     * @return 构建状态
+     */
+    @GetMapping("/preview/build/status")
+    public BaseResponse<VueBuildStatusVO> getVuePreviewBuildStatus(@RequestParam Long appId,
+                                                                   HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 无效");
+        User loginUser = userService.getLoginUser(request);
+        VueBuildStatusVO statusVO = appService.getVuePreviewBuildStatus(appId, loginUser);
+        return ResultUtils.success(statusVO);
     }
 
     /**

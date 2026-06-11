@@ -4,6 +4,7 @@ import com.eureka.flowbuilder.model.dto.app.AppAddRequest;
 import com.eureka.flowbuilder.model.dto.app.AppQueryRequest;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.vo.AppVO;
+import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.eureka.flowbuilder.model.entity.App;
@@ -78,4 +79,13 @@ public interface AppService extends IService<App> {
      * @param appUrl  应用url
      */
     void generateAppScreenshotAsync(Long appId, String appUrl);
+
+    /**
+     * 获取 Vue 工程预览构建状态
+     *
+     * @param appId     应用 id
+     * @param loginUser 登录用户
+     * @return 构建状态
+     */
+    VueBuildStatusVO getVuePreviewBuildStatus(Long appId, User loginUser);
 }

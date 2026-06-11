@@ -44,12 +44,12 @@ public class JsonMessageStreamHandler {
                                long appId, User loginUser) {
         // 收集数据用于生成后端记忆格式
         StringBuilder chatHistoryStringBuilder = new StringBuilder();
-        // 用于跟踪已经见过的工具ID，判断是否是第一次调用
-        Set<String> seenToolIds = new HashSet<>();
+        // 用于跟踪已展示过的工具调用，避免流式分片重复刷屏
+        Set<String> seenToolRequestKeys = new HashSet<>();
         return originFlux
                 .map(chunk -> {
                     // 解析每个 JSON 消息块
-                    return handleJsonMessageChunk(chunk, chatHistoryStringBuilder, seenToolIds);
+                    return handleJsonMessageChunk(chunk, chatHistoryStringBuilder, seenToolRequestKeys);
                 })
                 .filter(StrUtil::isNotEmpty) // 过滤空字串
                 .doOnComplete(() -> {
@@ -58,17 +58,18 @@ public class JsonMessageStreamHandler {
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
 
                 })
-                .doOnError(error -> {
-                    // 如果AI回复失败，也要记录错误消息
+                .doOnError(error -> log.error("Vue 项目流处理异常, appId={}", appId, error))
+                .onErrorResume(error -> {
                     String errorMessage = "AI回复失败: " + error.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                    return Flux.just("\n\n⚠️ " + errorMessage + "\n\n");
                 });
     }
 
     /**
      * 解析并收集 TokenStream 数据
      */
-    private String handleJsonMessageChunk(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolIds) {
+    private String handleJsonMessageChunk(String chunk, StringBuilder chatHistoryStringBuilder, Set<String> seenToolRequestKeys) {
         // 解析 JSON
         StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
         StreamMessageTypeEnum typeEnum = StreamMessageTypeEnum.getEnumByValue(streamMessage.getType());
@@ -84,25 +85,43 @@ public class JsonMessageStreamHandler {
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 String toolId = toolRequestMessage.getId();
                 String toolName = toolRequestMessage.getName();
-                // 检查是否是第一次看到这个工具 ID
-                if (toolId != null && !seenToolIds.contains(toolId)) {
-                    // 第一次调用这个工具，记录 ID 并完整返回工具信息
-                    seenToolIds.add(toolId);
-                    BaseTool tool = toolManager.getTool(toolId);
-                    return tool.generateToolRequestResponse();
-                } else {
-                    // 不是第一次调用这个工具，直接返回空
+                Integer requestIndex = toolRequestMessage.getRequestIndex();
+                // 流式分片阶段可能尚未带上 name，需等待后续分片
+                if (StrUtil.isBlank(toolName)) {
                     return "";
                 }
+                String dedupeKey = buildToolRequestDedupeKey(toolId, toolName, requestIndex);
+                if (seenToolRequestKeys.contains(dedupeKey)) {
+                    return "";
+                }
+                seenToolRequestKeys.add(dedupeKey);
+                BaseTool tool = toolManager.resolveTool(toolName, toolId);
+                String requestDisplay;
+                if (tool != null) {
+                    requestDisplay = tool.generateToolRequestResponse();
+                } else {
+                    log.warn("未注册的工具调用: name={}, id={}", toolName, toolId);
+                    requestDisplay = String.format("\n\n[选择工具] %s\n\n", toolName);
+                }
+                chatHistoryStringBuilder.append(requestDisplay);
+                return requestDisplay;
             }
             case TOOL_EXECUTED -> {
                 ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-                JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArguments());
                 String toolName = toolExecutedMessage.getName();
-                BaseTool tool = toolManager.getTool(toolName);
-                String result = tool.generateToolExecutedResult(jsonObject);
-                // 输出前端和要持久化的内容
-                String output = String.format("\n\n%s\n\n", result);
+                String output;
+                if (StrUtil.isBlank(toolName)) {
+                    output = "\n\n[工具执行完成]\n\n";
+                } else {
+                    BaseTool tool = toolManager.getTool(toolName);
+                    if (tool != null) {
+                        JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArguments());
+                        output = String.format("\n\n%s\n\n", tool.generateToolExecutedResult(jsonObject));
+                    } else {
+                        log.warn("未注册的工具执行结果: name={}", toolName);
+                        output = String.format("\n\n[工具执行] %s\n\n", toolName);
+                    }
+                }
                 chatHistoryStringBuilder.append(output);
                 return output;
             }
@@ -111,5 +130,19 @@ public class JsonMessageStreamHandler {
                 return "";
             }
         }
+    }
+
+    /**
+     * 工具请求去重键：优先 id；流式分片 id 不稳定时用 name+index
+     */
+    private static String buildToolRequestDedupeKey(String toolId, String toolName, Integer requestIndex) {
+        // 流式分片下 id 可能变化，优先用 index+name 去重
+        if (requestIndex != null) {
+            return "idx:" + requestIndex + ":" + toolName;
+        }
+        if (StrUtil.isNotBlank(toolId)) {
+            return "id:" + toolId;
+        }
+        return "name:" + toolName;
     }
 }
