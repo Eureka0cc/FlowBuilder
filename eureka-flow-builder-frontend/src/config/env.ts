@@ -19,7 +19,7 @@ export const STATIC_BASE_URL = `${API_BASE_URL}/static`
  * @param deployKey 部署标识
  */
 export const getDeployUrl = (deployKey: string): string => {
-  return `${DEPLOY_DOMAIN}/${deployKey}/index.html`
+  return `${DEPLOY_DOMAIN}/${deployKey}/`
 }
 
 /**

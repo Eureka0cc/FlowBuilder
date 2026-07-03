@@ -9,6 +9,7 @@ import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.exception.ThrowUtils;
+import com.eureka.flowbuilder.manager.TosManager;
 import com.eureka.flowbuilder.model.dto.user.*;
 import com.eureka.flowbuilder.model.vo.LoginUserVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
@@ -24,7 +25,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.service.UserService;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -38,6 +45,9 @@ public class UserController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private TosManager tosManager;
 
     /**
      * 用户注册。
@@ -250,5 +260,102 @@ public class UserController {
         return ResultUtils.success(userVOPage);
     }
 
+    /**
+     * 上传用户头像。
+     *
+     * @param file    头像文件
+     * @param request HTTP请求
+     * @return 头像URL
+     */
+    @PostMapping("/upload/avatar")
+    public BaseResponse<String> uploadAvatar(
+            @RequestPart("file") MultipartFile file,
+            HttpServletRequest request) {
+        ThrowUtils.throwIf(file == null || file.isEmpty(), ErrorCode.PARAMS_ERROR, "文件不能为空");
+        // 校验文件类型
+        String contentType = file.getContentType();
+        if (contentType == null || !isAllowedImageType(contentType)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "仅支持 PNG、JPEG、GIF、WebP 格式的图片");
+        }
+        // 校验文件大小（最大 10MB）
+        if (file.getSize() > 10 * 1024 * 1024) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "文件大小不能超过 10MB");
+        }
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 生成 TOS key
+        String originalFilename = file.getOriginalFilename();
+        String ext = "png";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            ext = originalFilename.substring(originalFilename.lastIndexOf('.') + 1).toLowerCase();
+        }
+        String key = String.format("avatars/%d_%d.%s", loginUser.getId(), System.currentTimeMillis(), ext);
+        // 保存到本地临时文件
+        File tempFile = null;
+        try {
+            tempFile = File.createTempFile("avatar_upload_", "." + ext);
+            file.transferTo(tempFile);
+            // 上传到 TOS
+            String url = tosManager.uploadFile(key, tempFile);
+            if (url == null) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "头像上传失败，请稍后重试");
+            }
+            return ResultUtils.success(url);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "头像上传失败: " + e.getMessage());
+        } finally {
+            // 删除本地临时文件
+            if (tempFile != null && tempFile.exists()) {
+                boolean deleted = tempFile.delete();
+                if (!deleted) {
+                    tempFile.deleteOnExit();
+                }
+            }
+        }
+    }
+
+    /**
+     * 当前登录用户更新自己的个人信息（不包括角色）。
+     *
+     * @param userUpdateRequest 更新请求
+     * @param request           HTTP请求
+     * @return 更新结果
+     */
+    @PostMapping("/profile/update")
+    public BaseResponse<Boolean> updateProfile(
+            @RequestBody UserUpdateRequest userUpdateRequest,
+            HttpServletRequest request) {
+        if (userUpdateRequest == null || userUpdateRequest.getId() == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 只能修改自己的信息
+        if (!loginUser.getId().equals(userUpdateRequest.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "只能修改自己的个人信息");
+        }
+        // 普通用户不能修改角色，只保留userName、userAvatar、userProfile
+        User user = new User();
+        user.setId(userUpdateRequest.getId());
+        user.setUserName(userUpdateRequest.getUserName());
+        user.setUserAvatar(userUpdateRequest.getUserAvatar());
+        user.setUserProfile(userUpdateRequest.getUserProfile());
+        // 保持原有角色不变
+        user.setUserRole(null);
+        user.setEditTime(LocalDateTime.now());
+        boolean result = userService.updateById(user);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 判断文件类型是否为允许的图片类型。
+     */
+    private boolean isAllowedImageType(String contentType) {
+        return "image/png".equals(contentType)
+                || "image/jpeg".equals(contentType)
+                || "image/gif".equals(contentType)
+                || "image/webp".equals(contentType);
+    }
 
 }

@@ -46,6 +46,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     @Resource
     private UserService userService;
 
+    /** 消息最大存储长度（保留前 5000 字符，足够展示且不会撑爆字段） */
+    private static final int MAX_MESSAGE_LENGTH = 5000;
+
     @Override
     public boolean addChatMessage(Long appId, String message, String messageType, Long userId) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
@@ -55,9 +58,13 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 验证消息类型是否有效
         ChatHistoryMessageTypeEnum messageTypeEnum = ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
         ThrowUtils.throwIf(messageTypeEnum == null, ErrorCode.PARAMS_ERROR, "不支持的消息类型: " + messageType);
+        // 截断过长消息，避免 Data truncation
+        final String sanitized = message.length() > MAX_MESSAGE_LENGTH
+                ? message.substring(0, MAX_MESSAGE_LENGTH) + "..."
+                : message;
         ChatHistory chatHistory = ChatHistory.builder()
                 .appId(appId)
-                .message(message)
+                .message(sanitized)
                 .messageType(messageType)
                 .userId(userId)
                 .build();

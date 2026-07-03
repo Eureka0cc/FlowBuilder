@@ -71,6 +71,25 @@ declare namespace API {
     message?: string
   }
 
+  type CaptchaVO = {
+    captchaId?: string
+    backgroundImage?: string
+    sliderImage?: string
+    sliderY?: number
+    expiresIn?: number
+  }
+
+  type CaptchaVerifyRequest = {
+    captchaId?: string
+    sliderX?: number
+  }
+
+  type BaseResponseCaptchaVO = {
+    code?: number
+    data?: CaptchaVO
+    message?: string
+  }
+
   type VueBuildStatusVO = {
     status?: string
     ready?: boolean

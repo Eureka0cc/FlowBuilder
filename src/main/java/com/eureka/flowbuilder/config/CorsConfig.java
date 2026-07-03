@@ -39,12 +39,16 @@ public class CorsConfig implements WebMvcConfigurer {
         log.info("配置静态资源映射 - 输出目录: {}", outputUri);
         log.info("配置静态资源映射 - 部署目录: {}", deployUri);
 
-        // 配置静态资源映射
+        // 配置静态资源映射（目录访问自动解析 index.html）
         registry.addResourceHandler("/static/**")
-                .addResourceLocations(outputUri);
+                .addResourceLocations(outputUri)
+                .resourceChain(true)
+                .addResolver(new WelcomeFileResourceResolver(AppConstant.DEPLOY_INDEX_FILE));
 
         // 配置部署目录的静态资源映射
         registry.addResourceHandler("/deploy/**")
-                .addResourceLocations(deployUri);
+                .addResourceLocations(deployUri)
+                .resourceChain(true)
+                .addResolver(new WelcomeFileResourceResolver(AppConstant.DEPLOY_INDEX_FILE));
     }
 }

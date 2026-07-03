@@ -399,6 +399,7 @@ import { getAppVoById, deleteApp, deployApp, getVuePreviewBuildStatus } from '@/
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { getCodeGenTypeText, CodeGenTypeEnum } from '@/constants/codeGenType'
 import { getStaticPreviewUrl, API_BASE_URL } from '@/config/env'
+import { marked } from 'marked'
 
 const route = useRoute()
 const router = useRouter()
@@ -532,39 +533,19 @@ const scrollToBottom = () => {
   })
 }
 
-// 格式化消息内容（支持Markdown风格）
+// 使用 marked 渲染 Markdown 消息
 const formatMessage = (content?: string) => {
   if (!content) return ''
-
-  // 转义HTML特殊字符
-  let formatted = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-  // 处理代码块 ```language\ncode\n```
-  formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
-    return `<pre class="code-block"><code class="language-${lang || 'text'}">${code.trim()}</code></pre>`
-  })
-
-  // 处理行内代码 `code`
-  formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-
-  // 处理粗体 **text**
-  formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-
-  // 处理斜体 *text*
-  formatted = formatted.replace(/\*([^*]+)\*/g, '<em>$1</em>')
-
-  // 处理标题 ### Title
-  formatted = formatted.replace(/^### (.+)$/gm, '<h4>$1</h4>')
-  formatted = formatted.replace(/^## (.+)$/gm, '<h3>$1</h3>')
-  formatted = formatted.replace(/^# (.+)$/gm, '<h2>$1</h2>')
-
-  // 处理列表 - item
-  formatted = formatted.replace(/^- (.+)$/gm, '<li>$1</li>')
-
-  // 处理换行
-  formatted = formatted.replace(/\n/g, '<br>')
-
-  return formatted
+  try {
+    return marked.parse(content, { breaks: true, gfm: true }) as string
+  } catch {
+    // 降级：转义 HTML 后保留换行
+    return content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')
+  }
 }
 
 // 加载应用信息
@@ -1298,8 +1279,11 @@ const sendInitialPrompt = async () => {
   } catch (error) {
     if (error instanceof Error && error.name !== 'AbortError') {
       console.error('发送初始提示词失败:', error)
-      message.error('发送初始提示词失败')
+      message.error('发送初始提示词失败：' + error.message)
     }
+    // 失败时移除已添加的用户消息和AI占位，允许用户手动重试
+    messages.value.splice(aiMessageIndex - 1, 2)
+    initialPromptSent.value = false
   } finally {
     generating.value = false
     currentAbortController = null
@@ -1554,8 +1538,16 @@ onUnmounted(() => {
   word-break: break-word;
 }
 
-/* 代码块样式 */
-.message-content :deep(.code-block) {
+/* marked 默认用 <p> 包裹段落，控制间距 */
+.message-content :deep(p) {
+  margin: 0 0 8px;
+}
+.message-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 代码块 */
+.message-content :deep(pre) {
   background: #1e1e1e;
   color: #d4d4d4;
   padding: 16px;
@@ -1566,9 +1558,15 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.5;
 }
+.message-content :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
 
-/* 行内代码样式 */
-.message-content :deep(.inline-code) {
+/* 行内代码 */
+.message-content :deep(code) {
   background: rgba(0, 0, 0, 0.08);
   padding: 2px 6px;
   border-radius: 4px;
@@ -1576,49 +1574,95 @@ onUnmounted(() => {
   font-size: 0.9em;
   color: #d63384;
 }
-
-.user-message .message-content :deep(.inline-code) {
+.user-message .message-content :deep(code) {
   background: rgba(255, 255, 255, 0.25);
   color: #fff;
 }
 
-/* 标题样式 */
+/* 标题 */
+.message-content :deep(h1),
 .message-content :deep(h2),
 .message-content :deep(h3),
 .message-content :deep(h4) {
   margin: 16px 0 8px;
   font-weight: 600;
 }
-
-.message-content :deep(h2) {
-  font-size: 18px;
-}
-
-.message-content :deep(h3) {
-  font-size: 16px;
-}
-
-.message-content :deep(h4) {
-  font-size: 14px;
-}
-
+.message-content :deep(h1) { font-size: 20px; }
+.message-content :deep(h2) { font-size: 18px; }
+.message-content :deep(h3) { font-size: 16px; }
+.message-content :deep(h4) { font-size: 14px; }
+.user-message .message-content :deep(h1),
 .user-message .message-content :deep(h2),
 .user-message .message-content :deep(h3),
 .user-message .message-content :deep(h4) {
   color: #fff;
 }
 
-/* 列表样式 */
+/* 列表 */
+.message-content :deep(ul),
+.message-content :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
 .message-content :deep(li) {
   margin: 4px 0;
-  list-style-position: inside;
+}
+.user-message .message-content :deep(li) {
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* 粗体和斜体 */
-.message-content :deep(strong) {
+/* 引用 */
+.message-content :deep(blockquote) {
+  border-left: 3px solid #d1d5db;
+  padding: 4px 12px;
+  margin: 12px 0;
+  color: #6b7280;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0 6px 6px 0;
+}
+.user-message .message-content :deep(blockquote) {
+  border-left-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* 链接 */
+.message-content :deep(a) {
+  color: #1890ff;
+  text-decoration: underline;
+}
+.user-message .message-content :deep(a) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 表格 */
+.message-content :deep(table) {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+}
+.message-content :deep(th),
+.message-content :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 6px 12px;
+  text-align: left;
+}
+.message-content :deep(th) {
+  background: #f3f4f6;
   font-weight: 600;
 }
 
+/* 分割线 */
+.message-content :deep(hr) {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 16px 0;
+}
+
+/* 粗体 */
+.message-content :deep(strong) {
+  font-weight: 600;
+}
 .user-message .message-content :deep(strong) {
   color: #fff;
 }

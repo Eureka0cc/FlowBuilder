@@ -83,6 +83,14 @@ public class VueProjectBuilder {
             return false;
         }
 
+        // 构建前语法预检：检查 JS 文件中常见的模板字符串未闭合等语法问题
+        String precheckError = precheckJavaScriptSyntax(projectDir);
+        if (precheckError != null) {
+            log.error("构建前语法预检失败: {}", precheckError);
+            writeBuildStatus(projectPath, STATUS_FAILED, false, precheckError);
+            return false;
+        }
+
         log.info("开始构建 Vue 项目: {}", projectPath);
 
         CommandResult installResult = executeNpmInstall(projectDir);
@@ -182,6 +190,59 @@ public class VueProjectBuilder {
         List<File> jsFiles = FileUtil.loopFiles(distDir, file ->
                 file.isFile() && file.getName().endsWith(".js"));
         return !jsFiles.isEmpty();
+    }
+
+    /**
+     * 构建前语法预检：检查 JS 文件中常见的语法问题（模板字符串未闭合、引号混用等）
+     *
+     * @param projectDir 项目根目录
+     * @return 如果发现问题返回错误描述（中文），否则返回 null
+     */
+    String precheckJavaScriptSyntax(File projectDir) {
+        List<File> jsFiles = FileUtil.loopFiles(new File(projectDir, "src"), file ->
+                file.isFile() && file.getName().endsWith(".js"));
+        for (File jsFile : jsFiles) {
+            String error = checkJsFileForSyntaxIssues(projectDir, jsFile);
+            if (error != null) {
+                return error;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 检查单个 JS 文件的模板字符串引号配对问题
+     */
+    private String checkJsFileForSyntaxIssues(File projectDir, File jsFile) {
+        try {
+            String content = FileUtil.readUtf8String(jsFile);
+            if (StrUtil.isBlank(content)) {
+                return null;
+            }
+            // 统计反引号数量——必须是偶数，否则有未闭合的模板字符串
+            long backtickCount = content.chars().filter(ch -> ch == '`').count();
+            if (backtickCount % 2 != 0) {
+                // 找到 content: ` 模式，检查是否用反引号打开却用双引号闭合
+                int templateStart = content.indexOf("content: `");
+                while (templateStart != -1) {
+                    int dq = content.indexOf('"', templateStart + 9);
+                    int lastBacktick = content.lastIndexOf('`');
+                    if (dq != -1 && lastBacktick > templateStart && dq < lastBacktick) {
+                        String snippet = content.substring(Math.max(0, dq - 30),
+                                Math.min(content.length(), dq + 10)).replace('\n', ' ');
+                        return String.format("语法错误：%s 中存在未闭合的模板字符串——" +
+                                        "反引号(`)开头的内容块使用了双引号(\")结尾，请检查：..." + snippet.trim() + "...",
+                                FileUtil.subPath(projectDir.getAbsolutePath(), jsFile));
+                    }
+                    templateStart = content.indexOf("content: `", templateStart + 1);
+                }
+                return String.format("语法错误：%s 中的反引号数量为奇数，存在未闭合的模板字符串（`）",
+                        FileUtil.subPath(projectDir.getAbsolutePath(), jsFile));
+            }
+        } catch (Exception e) {
+            log.warn("预检文件时异常: {}", jsFile.getAbsolutePath(), e);
+        }
+        return null;
     }
 
     void writeBuildStatus(String projectPath, String status, boolean ready, String message) {

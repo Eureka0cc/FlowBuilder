@@ -20,6 +20,7 @@
 }
 
 .footer-content {
+  display: none;
   color: rgba(0, 0, 0, 0.65);
   font-size: 14px;
 }
