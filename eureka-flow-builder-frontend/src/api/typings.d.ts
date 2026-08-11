@@ -1,6 +1,7 @@
 declare namespace API {
   type App = {
     id?: string
+    teamId?: string
     appName?: string
     cover?: string
     initPrompt?: string
@@ -17,6 +18,7 @@ declare namespace API {
 
   type AppAddRequest = {
     initPrompt?: string
+    teamId?: string
   }
 
   type AppAdminUpdateRequest = {
@@ -52,6 +54,7 @@ declare namespace API {
 
   type AppVO = {
     id?: string
+    teamId?: string
     appName?: string
     cover?: string
     initPrompt?: string

@@ -8,7 +8,6 @@ import cn.hutool.core.util.StrUtil;
 import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingService;
 import com.eureka.flowbuilder.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.eureka.flowbuilder.constant.AppConstant;
-import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.core.AiCodeGeneratorFacade;
 import com.eureka.flowbuilder.core.builder.VueProjectBuilder;
 import com.eureka.flowbuilder.core.handler.StreamHandlerExecutor;
@@ -17,16 +16,23 @@ import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.exception.ThrowUtils;
 import com.eureka.flowbuilder.model.dto.app.AppAddRequest;
 import com.eureka.flowbuilder.model.dto.app.AppQueryRequest;
+import com.eureka.flowbuilder.model.dto.app.ReplaceImageRequest;
+import com.eureka.flowbuilder.model.entity.TeamAsset;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.enums.ChatHistoryMessageTypeEnum;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import com.eureka.flowbuilder.model.vo.AppVO;
+import com.eureka.flowbuilder.model.vo.ReplaceImageVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
 import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.eureka.flowbuilder.service.ChatHistoryService;
 import com.eureka.flowbuilder.service.ScreenshotService;
+import com.eureka.flowbuilder.service.TeamAssetService;
+import com.eureka.flowbuilder.service.TeamAuthorizationService;
+import com.eureka.flowbuilder.service.TeamService;
 import com.eureka.flowbuilder.service.UserService;
+import com.eureka.flowbuilder.utils.SourceImageReplacer;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.eureka.flowbuilder.model.entity.App;
@@ -38,7 +44,10 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.Serializable;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,6 +88,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
+    @Resource
+    private TeamService teamService;
+
+    @Resource
+    private TeamAssetService teamAssetService;
+
+    @Resource
+    private TeamAuthorizationService teamAuthorizationService;
+
     @Override
     public Long createApp(AppAddRequest appAddRequest, User loginUser) {
         // 参数校验
@@ -88,6 +106,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setUserId(loginUser.getId());
+        Long teamId = appAddRequest.getTeamId();
+        if (teamId == null) {
+            teamId = teamService.getOrCreatePersonalTeam(loginUser);
+        } else {
+            ThrowUtils.throwIf(teamService.getById(teamId) == null,
+                    ErrorCode.NOT_FOUND_ERROR, "团队不存在");
+            teamAuthorizationService.requireEdit(teamId, loginUser);
+        }
+        app.setTeamId(teamId);
         // 应用名称暂时为 initPrompt 前 12 位
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
         // 使用 AI 智能选择代码生成类型(多例模式)
@@ -131,6 +158,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String deployKey = appQueryRequest.getDeployKey();
         Integer priority = appQueryRequest.getPriority();
         Long userId = appQueryRequest.getUserId();
+        Long teamId = appQueryRequest.getTeamId();
         String sortField = appQueryRequest.getSortField();
         String sortOrder = appQueryRequest.getSortOrder();
         return QueryWrapper.create()
@@ -142,6 +170,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 .eq("deployKey", deployKey)
                 .eq("priority", priority)
                 .eq("userId", userId)
+                .eq("teamId", teamId)
                 .orderBy(sortField, "ascend".equals(sortOrder));
     }
 
@@ -172,10 +201,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 2. 查询应用信息
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 3. 验证用户是否有权限访问该应用，仅本人可以生成代码
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
-        }
+        // 3. OWNER/EDITOR 可生成代码；历史应用仍仅创建者/管理员可编辑
+        teamAuthorizationService.requireEdit(app, loginUser);
         // 4. 获取应用的代码生成类型
         String codeGenTypeStr = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
@@ -184,8 +211,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         // 5. 通过校验后，添加用户消息到对话历史
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        String generationMessage = appendTeamAssetSummary(message, app.getTeamId());
         // 6. 调用 AI 生成代码（流式）
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(generationMessage, codeGenTypeEnum, appId);
         // 7. 收集AI响应内容并在完成后记录到对话历史
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }
@@ -198,10 +226,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 2. 查询应用信息
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 3. 验证用户是否有权限部署该应用，仅本人可以部署
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限部署该应用");
-        }
+        // 3. OWNER/EDITOR 可部署
+        teamAuthorizationService.requireEdit(app, loginUser);
         // 4. 检查是否已有 deployKey
         String deployKey = app.getDeployKey();
         // 没有则生成 6 位 deployKey（大小写字母 + 数字）
@@ -304,10 +330,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 无效");
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        if (!app.getUserId().equals(loginUser.getId())
-                && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限查看该应用构建状态");
-        }
+        teamAuthorizationService.requireView(app, loginUser);
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
         if (codeGenTypeEnum != CodeGenTypeEnum.VUE_PROJECT) {
             VueBuildStatusVO statusVO = new VueBuildStatusVO();
@@ -317,6 +340,52 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return statusVO;
         }
         return vueProjectBuilder.getBuildStatus(appId);
+    }
+
+    @Override
+    public ReplaceImageVO replaceImage(ReplaceImageRequest request, User loginUser) {
+        ThrowUtils.throwIf(request == null || request.getAppId() == null || request.getAssetId() == null,
+                ErrorCode.PARAMS_ERROR, "应用和资产 ID 不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(request.getOldUrl()), ErrorCode.PARAMS_ERROR, "旧图片 URL 不能为空");
+        App app = getById(request.getAppId());
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        teamAuthorizationService.requireEdit(app, loginUser);
+        TeamAsset asset = teamAssetService.getById(request.getAssetId());
+        ThrowUtils.throwIf(asset == null, ErrorCode.NOT_FOUND_ERROR, "团队资产不存在");
+        ThrowUtils.throwIf(app.getTeamId() == null || !app.getTeamId().equals(asset.getTeamId()),
+                ErrorCode.PARAMS_ERROR, "资产与应用不属于同一团队");
+        ThrowUtils.throwIf(StrUtil.isBlank(asset.getUrl()) || request.getOldUrl().equals(asset.getUrl()),
+                ErrorCode.PARAMS_ERROR, "新旧图片 URL 不能相同");
+
+        Path outputRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR).toAbsolutePath().normalize();
+        Path sourcePath = outputRoot.resolve(app.getCodeGenType() + "_" + app.getId()).normalize();
+        ThrowUtils.throwIf(!sourcePath.startsWith(outputRoot), ErrorCode.PARAMS_ERROR, "源码路径非法");
+        try {
+            ReplaceImageVO result = SourceImageReplacer.replace(sourcePath, request.getOldUrl(), asset.getUrl());
+            if (CodeGenTypeEnum.VUE_PROJECT.getValue().equals(app.getCodeGenType())
+                    && result.getReplacementCount() > 0) {
+                vueProjectBuilder.buildProjectAsync(sourcePath.toString());
+            }
+            return result;
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "替换图片失败：" + e.getMessage());
+        }
+    }
+
+    private String appendTeamAssetSummary(String message, Long teamId) {
+        List<TeamAsset> assets = teamAssetService.listPromptAssets(teamId, 8);
+        if (assets.isEmpty()) {
+            return message;
+        }
+        StringBuilder summary = new StringBuilder(message)
+                .append("\n\n[团队素材（生成页面时优先使用）]\n")
+                .append("使用素材的 img 元素请保留 data-team-asset-id 属性，便于后续可视化替换。\n");
+        for (TeamAsset asset : assets) {
+            summary.append("- assetId=").append(asset.getId())
+                    .append(", name=").append(asset.getName())
+                    .append(", url=").append(asset.getUrl()).append('\n');
+        }
+        return summary.toString();
     }
 
     /**

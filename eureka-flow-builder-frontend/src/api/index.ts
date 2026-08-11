@@ -5,8 +5,10 @@
 import * as userController from './userController'
 import * as chatHistoryController from './chatHistoryController'
 import * as appController from './appController'
+import * as teamController from './teamController'
 export default {
   userController,
   chatHistoryController,
   appController,
+  teamController,
 }

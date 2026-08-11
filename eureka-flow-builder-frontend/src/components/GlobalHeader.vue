@@ -22,6 +22,15 @@
       <!-- 右侧用户区域：已登录显示头像和用户名，未登录显示登录按钮 -->
       <div class="user-section">
         <div v-if="loginUserStore.loginUser.id">
+          <a-space>
+            <a-select
+              class="team-select"
+              :value="workspaceStore.currentTeamId || undefined"
+              :options="teamOptions"
+              :loading="workspaceStore.loading"
+              placeholder="选择团队"
+              @change="handleTeamChange"
+            />
           <a-dropdown>
             <a-space>
               <UserAvatar
@@ -33,6 +42,7 @@
             </a-space>
             <template #overlay>
               <a-menu>
+                <a-menu-item @click="router.push('/workspace/settings')">团队设置</a-menu-item>
                 <a-menu-item @click="doLogout">
                   <LogoutOutlined />
                   退出登录
@@ -40,6 +50,7 @@
               </a-menu>
             </template>
           </a-dropdown>
+          </a-space>
         </div>
         <div v-else>
           <a-button type="primary" href="/user/login">登录</a-button>
@@ -50,16 +61,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { MenuProps } from 'ant-design-vue'
 import { LogoutOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { logout } from '@/api/userController'
 import UserAvatar from './UserAvatar.vue'
 
 const loginUserStore = useLoginUserStore()
+const workspaceStore = useWorkspaceStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -71,17 +84,49 @@ onMounted(() => {
   selectedKeys.value = [route.path]
 })
 
+watch(
+  () => loginUserStore.loginUser.id,
+  (id) => {
+    if (id) void workspaceStore.fetchTeams().catch(() => undefined)
+  },
+  { immediate: true },
+)
+
+const teamOptions = computed(() =>
+  workspaceStore.teams.map((team) => ({ label: team.name, value: String(team.id) })),
+)
+const handleTeamChange = (teamId: string) => {
+  workspaceStore.selectTeam(teamId)
+}
+
 // 路由变化时同步菜单高亮状态
 router.afterEach((to) => {
   selectedKeys.value = [to.path]
 })
 
 // 顶部导航菜单项配置 - 固定三个菜单项，管理员菜单通过disabled控制显示
-const originItems: MenuProps['items'] = [
+type HeaderMenuItem = {
+  key: string
+  label: string
+  title: string
+  disabled?: boolean
+}
+
+const originItems: HeaderMenuItem[] = [
   {
     key: '/',
     label: '首页',
     title: '首页',
+  },
+  {
+    key: '/workspace/sites',
+    label: '站点',
+    title: '团队站点',
+  },
+  {
+    key: '/workspace/assets',
+    label: '资产',
+    title: '团队资产',
   },
   {
     key: '/admin/userManage',
@@ -113,15 +158,18 @@ const originItems: MenuProps['items'] = [
 ]
 
 // 展示在菜单的路由数组 - 不再过滤，保持固定数量
-const menuItems = computed<MenuProps['items']>(() => {
-  return originItems.map((item: any) => {
-    // 动态计算disabled状态
-    if (item.key?.startsWith('/admin')) {
+const menuItems = computed<HeaderMenuItem[]>(() => {
+  return originItems
+    .map((item) => {
+      const key = String(item?.key ?? '')
+      if (!key.startsWith('/admin')) return item
       const loginUser = loginUserStore.loginUser
-      item.disabled = !loginUser || loginUser.userRole !== 'admin'
-    }
-    return item
-  })
+      return { ...item, disabled: !loginUser || loginUser.userRole !== 'admin' }
+    })
+    .filter((item) => {
+      const key = String(item?.key ?? '')
+      return !key.startsWith('/workspace') || !!loginUserStore.loginUser.id
+    })
 })
 
 // 菜单点击回调：更新选中状态并跳转路由
@@ -202,7 +250,7 @@ const doLogout = async () => {
 /* 菜单包装器 - 固定宽度，防止抖动 */
 .menu-wrapper {
   flex: 0 0 auto;
-  width: 380px;
+  width: 440px;
   display: flex;
   justify-content: center;
 }
@@ -255,10 +303,14 @@ const doLogout = async () => {
 /* 用户区域：固定宽度，不允许收缩 */
 .user-section {
   flex-shrink: 0;
-  width: 200px;
+  min-width: 260px;
   display: flex;
   justify-content: flex-end;
   align-items: center;
+}
+
+.team-select {
+  width: 120px;
 }
 
 /* ===== 响应式适配 ===== */
@@ -288,6 +340,7 @@ const doLogout = async () => {
 
   .user-section {
     width: auto;
+    min-width: 0;
   }
 
   .logo {
@@ -305,6 +358,14 @@ const doLogout = async () => {
   .menu-wrapper {
     width: auto;
     flex: 1;
+  }
+
+  .team-select {
+    width: 92px;
+  }
+
+  .user-section :deep(.ant-space-item:last-child .ant-space-item:last-child) {
+    display: none;
   }
 }
 </style>

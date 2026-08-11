@@ -12,5 +12,10 @@ public class AppAddRequest implements Serializable {
      */
     private String initPrompt;
 
+    /**
+     * 所属团队；为空时使用或创建个人团队
+     */
+    private Long teamId;
+
     private static final long serialVersionUID = 1L;
 }

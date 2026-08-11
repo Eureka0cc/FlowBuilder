@@ -85,6 +85,12 @@ public class App implements Serializable {
     private Long userId;
 
     /**
+     * 所属团队 id；历史数据允许为空
+     */
+    @Column("teamId")
+    private Long teamId;
+
+    /**
      * 编辑时间
      */
     @Column("editTime")

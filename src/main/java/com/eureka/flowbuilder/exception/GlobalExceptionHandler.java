@@ -1,4 +1,4 @@
-﻿package com.eureka.flowbuilder.exception;
+package com.eureka.flowbuilder.exception;
 
 import cn.hutool.json.JSONUtil;
 import com.eureka.flowbuilder.common.BaseResponse;
@@ -20,92 +20,51 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
-    /**
-     * 处理业务异常
-     *
-     * @param e 业务异常
-     * @return 统一响应结果
-     */
     @ExceptionHandler(BusinessException.class)
     public BaseResponse<?> businessExceptionHandler(BusinessException e) {
         log.error("BusinessException", e);
-        // 尝试处理 SSE 请求
-        if (handleSseError(e.getCode(), e.getMessage())) {
-            return null;
-        }
-        // 对于普通请求，返回标准 JSON 响应
-        return ResultUtils.error(e.getCode(), e.getMessage());
+        return handleSseError(e.getCode(), e.getMessage())
+                ? null : ResultUtils.error(e.getCode(), e.getMessage());
     }
 
-    /**
-     * 处理运行时异常
-     *
-     * @param e 运行时异常
-     * @return 统一响应结果
-     */
     @ExceptionHandler(RuntimeException.class)
     public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
         log.error("RuntimeException", e);
-        // 尝试处理 SSE 请求
-        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), e.getMessage())) {
-            return null;
-        }
-        return ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
+        return handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), e.getMessage())
+                ? null : ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
     }
 
-    /**
-     * 处理SSE请求的错误响应
-     *
-     * @param errorCode 错误码
-     * @param errorMessage 错误信息
-     * @return true表示是SSE请求并已处理，false表示不是SSE请求
-     */
     private boolean handleSseError(int errorCode, String errorMessage) {
-        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        ServletRequestAttributes attributes =
+                (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes == null) {
             return false;
         }
         HttpServletRequest request = attributes.getRequest();
         HttpServletResponse response = attributes.getResponse();
-        // 判断是否是SSE请求（通过Accept头或URL路径）
         String accept = request.getHeader("Accept");
-        String uri = request.getRequestURI();
-        if ((accept != null && accept.contains("text/event-stream")) ||
-                uri.contains("/chat/gen/code")) {
-            // Flux SSE 已开始写入时不能再 getWriter，否则会二次异常
-            if (response.isCommitted()) {
-                log.warn("SSE 响应已提交，跳过全局异常写入: {}", errorMessage);
-                return true;
-            }
-            try {
-                // 设置SSE响应头
-                response.setContentType("text/event-stream");
-                response.setCharacterEncoding("UTF-8");
-                response.setHeader("Cache-Control", "no-cache");
-                response.setHeader("Connection", "keep-alive");
-                // 构造错误消息的SSE格式
-                Map<String, Object> errorData = Map.of(
-                        "error", true,
-                        "code", errorCode,
-                        "message", errorMessage
-                );
-                String errorJson = JSONUtil.toJsonStr(errorData);
-                // 发送业务错误事件（避免与标准error事件冲突）
-                String sseData = "event: business-error\ndata: " + errorJson + "\n\n";
-                response.getWriter().write(sseData);
-                response.getWriter().flush();
-                // 发送结束事件
-                response.getWriter().write("event: done\ndata: {}\n\n");
-                response.getWriter().flush();
-                // 表示已处理SSE请求
-                return true;
-            } catch (IOException ioException) {
-                log.error("Failed to write SSE error response", ioException);
-                // 即使写入失败，也表示这是SSE请求
-                return true;
-            }
+        if ((accept == null || !accept.contains("text/event-stream"))
+                && !request.getRequestURI().contains("/chat/gen/code")) {
+            return false;
         }
-        return false;
+        if (response == null || response.isCommitted()) {
+            log.warn("SSE 响应已提交，跳过全局异常写入: {}", errorMessage);
+            return true;
+        }
+        try {
+            response.setContentType("text/event-stream");
+            response.setCharacterEncoding("UTF-8");
+            response.setHeader("Cache-Control", "no-cache");
+            response.setHeader("Connection", "keep-alive");
+            Map<String, Object> data = Map.of(
+                    "error", true, "code", errorCode, "message", errorMessage);
+            response.getWriter().write(
+                    "event: business-error\ndata: " + JSONUtil.toJsonStr(data) + "\n\n");
+            response.getWriter().write("event: done\ndata: {}\n\n");
+            response.getWriter().flush();
+        } catch (IOException ioException) {
+            log.error("Failed to write SSE error response", ioException);
+        }
+        return true;
     }
 }
-

@@ -78,7 +78,7 @@
             :total="myAppsTotal"
             :page-size="myAppsPageSize"
             :show-size-changer="false"
-            :show-total="(total) => `共 ${total} 个应用`"
+            :show-total="(total: number) => `共 ${total} 个应用`"
             @change="loadMyApps"
           />
         </div>
@@ -125,7 +125,7 @@
             :total="goodAppsTotal"
             :page-size="goodAppsPageSize"
             :show-size-changer="false"
-            :show-total="(total) => `共 ${total} 个应用`"
+            :show-total="(total: number) => `共 ${total} 个应用`"
             @change="loadGoodApps"
           />
         </div>
@@ -138,6 +138,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import dayjs from 'dayjs'
 import { ArrowUpOutlined } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'

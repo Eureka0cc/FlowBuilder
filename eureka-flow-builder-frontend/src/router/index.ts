@@ -7,6 +7,9 @@ import AppManagePage from '@/pages/admin/AppManagePage.vue'
 import ChatHistoryManagePage from '@/pages/admin/ChatHistoryManagePage.vue'
 import AppChatPage from '@/pages/app/AppChatPage.vue'
 import AppEditPage from '@/pages/app/AppEditPage.vue'
+import TeamSitesPage from '@/pages/workspace/TeamSitesPage.vue'
+import TeamAssetsPage from '@/pages/workspace/TeamAssetsPage.vue'
+import TeamSettingsPage from '@/pages/workspace/TeamSettingsPage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -50,6 +53,21 @@ const router = createRouter({
       path: '/app/edit/:id',
       name: '编辑应用',
       component: AppEditPage,
+    },
+    {
+      path: '/workspace/sites',
+      name: '团队站点',
+      component: TeamSitesPage,
+    },
+    {
+      path: '/workspace/assets',
+      name: '团队资产',
+      component: TeamAssetsPage,
+    },
+    {
+      path: '/workspace/settings',
+      name: '团队设置',
+      component: TeamSettingsPage,
     },
   ],
 
