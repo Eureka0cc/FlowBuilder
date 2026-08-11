@@ -105,7 +105,14 @@ router.afterEach((to) => {
 })
 
 // 顶部导航菜单项配置 - 固定三个菜单项，管理员菜单通过disabled控制显示
-const originItems: MenuProps['items'] = [
+type HeaderMenuItem = {
+  key: string
+  label: string
+  title: string
+  disabled?: boolean
+}
+
+const originItems: HeaderMenuItem[] = [
   {
     key: '/',
     label: '首页',
@@ -151,18 +158,18 @@ const originItems: MenuProps['items'] = [
 ]
 
 // 展示在菜单的路由数组 - 不再过滤，保持固定数量
-const menuItems = computed<MenuProps['items']>(() => {
-  return originItems.map((item: any) => {
-    // 动态计算disabled状态
-    if (item.key?.startsWith('/admin')) {
+const menuItems = computed<HeaderMenuItem[]>(() => {
+  return originItems
+    .map((item) => {
+      const key = String(item?.key ?? '')
+      if (!key.startsWith('/admin')) return item
       const loginUser = loginUserStore.loginUser
-      item.disabled = !loginUser || loginUser.userRole !== 'admin'
-    }
-    return item
-  }).filter((item: any) => {
-    if (item.key?.startsWith('/workspace')) return !!loginUserStore.loginUser.id
-    return true
-  })
+      return { ...item, disabled: !loginUser || loginUser.userRole !== 'admin' }
+    })
+    .filter((item) => {
+      const key = String(item?.key ?? '')
+      return !key.startsWith('/workspace') || !!loginUserStore.loginUser.id
+    })
 })
 
 // 菜单点击回调：更新选中状态并跳转路由

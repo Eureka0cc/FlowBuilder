@@ -558,7 +558,7 @@ const handleAssetSelected = async (asset: TeamAsset) => {
   const kind = element.tagName === 'img' ? 'img' : 'background'
   const oldUrl =
     kind === 'img'
-      ? element.currentSrc || element.src || ''
+      ? element.src || element.currentSrc || ''
       : extractBackgroundUrl(element.backgroundImage)
   if (!oldUrl) {
     message.error('无法识别当前图片地址，请改用 AI 指令替换')

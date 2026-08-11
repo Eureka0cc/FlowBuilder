@@ -13,7 +13,13 @@
       >
         上传图片
       </a-button>
-      <input ref="fileInput" hidden type="file" accept="image/*" @change="handleUpload" />
+      <input
+        ref="fileInput"
+        hidden
+        type="file"
+        accept="image/jpeg,image/png,image/gif"
+        @change="handleUpload"
+      />
     </div>
 
     <a-input-search
@@ -99,7 +105,9 @@ const handleUpload = async (event: Event) => {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  if (!file.type.startsWith('image/')) return message.error('只能上传图片文件')
+  if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+    return message.error('仅支持 JPEG、PNG、GIF 图片')
+  }
   if (file.size > 10 * 1024 * 1024) return message.error('图片不能超过 10MB')
   try {
     await assets.upload(workspace.currentTeamId, file)

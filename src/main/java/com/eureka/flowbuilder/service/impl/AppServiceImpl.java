@@ -378,9 +378,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return message;
         }
         StringBuilder summary = new StringBuilder(message)
-                .append("\n\n[团队素材（生成页面时优先使用）]\n");
+                .append("\n\n[团队素材（生成页面时优先使用）]\n")
+                .append("使用素材的 img 元素请保留 data-team-asset-id 属性，便于后续可视化替换。\n");
         for (TeamAsset asset : assets) {
-            summary.append("- ").append(asset.getName()).append(": ").append(asset.getUrl()).append('\n');
+            summary.append("- assetId=").append(asset.getId())
+                    .append(", name=").append(asset.getName())
+                    .append(", url=").append(asset.getUrl()).append('\n');
         }
         return summary.toString();
     }

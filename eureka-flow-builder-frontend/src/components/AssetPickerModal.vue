@@ -16,7 +16,13 @@
       <a-button v-if="canUpload" :loading="assetStore.uploading" @click="fileInput?.click()">
         上传图片
       </a-button>
-      <input ref="fileInput" hidden type="file" accept="image/*" @change="handleFile" />
+      <input
+        ref="fileInput"
+        hidden
+        type="file"
+        accept="image/jpeg,image/png,image/gif"
+        @change="handleFile"
+      />
     </div>
     <a-spin :spinning="assetStore.loading">
       <div v-if="assetStore.records.length" class="asset-grid">
@@ -87,8 +93,8 @@ const handleFile = async (event: Event) => {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  if (!file.type.startsWith('image/')) {
-    message.error('只能上传图片文件')
+  if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+    message.error('仅支持 JPEG、PNG、GIF 图片')
     return
   }
   if (file.size > 10 * 1024 * 1024) {

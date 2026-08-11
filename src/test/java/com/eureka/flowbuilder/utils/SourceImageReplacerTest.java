@@ -26,9 +26,9 @@ class SourceImageReplacerTest {
 
         ReplaceImageVO result = SourceImageReplacer.replace(source, "old-url", "new-url");
 
-        assertEquals(3, result.getReplacementCount());
+        assertEquals(2, result.getReplacementCount());
         assertEquals(java.util.List.of("App.vue"), result.getAffectedPaths());
-        assertEquals("<img src=\"new-url\"><img src=\"new-url-extra\">new-url", Files.readString(vue));
+        assertEquals("<img src=\"new-url\"><img src=\"old-url-extra\">new-url", Files.readString(vue));
         assertEquals("old-url", Files.readString(generated));
     }
 

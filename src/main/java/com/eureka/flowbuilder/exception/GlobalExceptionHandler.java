@@ -1,4 +1,4 @@
-﻿package com.eureka.flowbuilder.exception;
+package com.eureka.flowbuilder.exception;
 
 import cn.hutool.json.JSONUtil;
 import com.eureka.flowbuilder.common.BaseResponse;

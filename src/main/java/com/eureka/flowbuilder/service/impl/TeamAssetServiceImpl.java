@@ -43,15 +43,14 @@ public class TeamAssetServiceImpl extends ServiceImpl<TeamAssetMapper, TeamAsset
         authorizationService.requireEdit(teamId, user);
         ThrowUtils.throwIf(file == null || file.isEmpty(), ErrorCode.PARAMS_ERROR, "图片不能为空");
         ThrowUtils.throwIf(file.getSize() > MAX_IMAGE_SIZE, ErrorCode.PARAMS_ERROR, "图片不能超过 10MB");
-        ThrowUtils.throwIf(file.getContentType() == null || !file.getContentType().startsWith("image/"),
-                ErrorCode.PARAMS_ERROR, "仅支持图片类型");
+        String contentType = file.getContentType();
+        String suffix = extensionForContentType(contentType);
+        ThrowUtils.throwIf(suffix == null, ErrorCode.PARAMS_ERROR, "仅支持 JPEG、PNG、GIF 图片");
 
         File tempFile = null;
         TeamAsset asset = new TeamAsset();
         try {
             String originalName = safeFileName(file.getOriginalFilename());
-            String suffix = originalName.contains(".")
-                    ? originalName.substring(originalName.lastIndexOf('.')) : ".img";
             tempFile = File.createTempFile("team-asset-", suffix);
             file.transferTo(tempFile);
             BufferedImage image = ImageIO.read(tempFile);
@@ -61,13 +60,16 @@ public class TeamAssetServiceImpl extends ServiceImpl<TeamAssetMapper, TeamAsset
             asset.setUploaderId(user.getId());
             asset.setName(StrUtil.blankToDefault(name, originalName));
             asset.setTags(tags);
-            asset.setContentType(file.getContentType());
+            asset.setContentType(contentType);
             asset.setSize(file.getSize());
             asset.setWidth(image.getWidth());
             asset.setHeight(image.getHeight());
             ThrowUtils.throwIf(!save(asset), ErrorCode.OPERATION_ERROR, "保存资产失败");
 
-            String key = String.format("teams/%d/assets/%d/%s", teamId, asset.getId(), originalName);
+            String baseName = originalName.contains(".")
+                    ? originalName.substring(0, originalName.lastIndexOf('.')) : originalName;
+            String key = String.format("teams/%d/assets/%d/%s%s",
+                    teamId, asset.getId(), baseName, suffix);
             String url = tosManager.uploadFile(key, tempFile);
             if (StrUtil.isBlank(url)) {
                 removeById(asset.getId());
@@ -142,5 +144,17 @@ public class TeamAssetServiceImpl extends ServiceImpl<TeamAssetMapper, TeamAsset
         String fileName = StrUtil.blankToDefault(originalName, "image");
         fileName = new File(fileName).getName().replaceAll("[^a-zA-Z0-9._-]", "_");
         return StrUtil.isBlank(fileName) ? "image" : fileName;
+    }
+
+    private String extensionForContentType(String contentType) {
+        if (contentType == null) {
+            return null;
+        }
+        return switch (contentType.toLowerCase()) {
+            case "image/jpeg", "image/jpg" -> ".jpg";
+            case "image/png" -> ".png";
+            case "image/gif" -> ".gif";
+            default -> null;
+        };
     }
 }

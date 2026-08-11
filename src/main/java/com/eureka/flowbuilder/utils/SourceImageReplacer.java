@@ -8,6 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class SourceImageReplacer {
     private static final Set<String> EXTENSIONS = Set.of(
@@ -28,6 +30,10 @@ public final class SourceImageReplacer {
         }
         Path root = normalizedRoot.toRealPath();
         ReplaceImageVO result = new ReplaceImageVO();
+        Pattern exactUrlPattern = Pattern.compile(
+                "(?<![A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-])"
+                        + Pattern.quote(oldUrl)
+                        + "(?![A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-])");
         try (var paths = Files.walk(root)) {
             for (Path path : paths.filter(Files::isRegularFile).toList()) {
                 if (Files.isSymbolicLink(path)) {
@@ -47,11 +53,14 @@ public final class SourceImageReplacer {
                     continue;
                 }
                 String content = new String(bytes, StandardCharsets.UTF_8);
-                int count = countOccurrences(content, oldUrl);
+                Matcher matcher = exactUrlPattern.matcher(content);
+                int count = countMatches(matcher);
                 if (count == 0) {
                     continue;
                 }
-                Files.writeString(normalized, content.replace(oldUrl, newUrl), StandardCharsets.UTF_8,
+                String replaced = exactUrlPattern.matcher(content)
+                        .replaceAll(Matcher.quoteReplacement(newUrl));
+                Files.writeString(normalized, replaced, StandardCharsets.UTF_8,
                         StandardOpenOption.TRUNCATE_EXISTING);
                 result.getAffectedPaths().add(relative.toString().replace('\\', '/'));
                 result.setReplacementCount(result.getReplacementCount() + count);
@@ -84,12 +93,10 @@ public final class SourceImageReplacer {
         return false;
     }
 
-    private static int countOccurrences(String content, String target) {
+    private static int countMatches(Matcher matcher) {
         int count = 0;
-        int index = 0;
-        while ((index = content.indexOf(target, index)) >= 0) {
+        while (matcher.find()) {
             count++;
-            index += target.length();
         }
         return count;
     }
