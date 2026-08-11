@@ -7,6 +7,11 @@ export interface VisualEditorElementInfo {
   textContent?: string
   selector: string
   outerHTML?: string
+  src?: string
+  currentSrc?: string
+  alt?: string
+  backgroundImage?: string
+  isImage?: boolean
 }
 
 export const VISUAL_EDITOR_MESSAGE_TYPE = {
@@ -14,6 +19,7 @@ export const VISUAL_EDITOR_MESSAGE_TYPE = {
   DISABLE: 'VISUAL_EDITOR_DISABLE',
   CLEAR_SELECTION: 'VISUAL_EDITOR_CLEAR_SELECTION',
   ELEMENT_SELECTED: 'VISUAL_EDITOR_ELEMENT_SELECTED',
+  REPLACE_IMAGE: 'VISUAL_EDITOR_REPLACE_IMAGE',
   READY: 'VISUAL_EDITOR_READY',
 } as const
 
@@ -109,6 +115,11 @@ export const VISUAL_EDITOR_IFRAME_SCRIPT = `
   }
 
   function collectElementInfo(el) {
+    var computedStyle = window.getComputedStyle(el);
+    var backgroundImage = computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none'
+      ? computedStyle.backgroundImage
+      : undefined;
+    var isImg = el.tagName.toLowerCase() === 'img';
     return {
       tagName: el.tagName.toLowerCase(),
       id: el.id || undefined,
@@ -116,7 +127,31 @@ export const VISUAL_EDITOR_IFRAME_SCRIPT = `
       textContent: truncate((el.textContent || '').trim(), 200) || undefined,
       selector: generateSelector(el),
       outerHTML: truncate(el.outerHTML || '', 500) || undefined,
+      src: isImg ? (el.getAttribute('src') || undefined) : undefined,
+      currentSrc: isImg ? (el.currentSrc || el.src || undefined) : undefined,
+      alt: isImg ? (el.getAttribute('alt') || undefined) : undefined,
+      backgroundImage: backgroundImage,
+      isImage: isImg || !!backgroundImage,
     };
+  }
+
+  function replaceImage(payload) {
+    if (!payload || !payload.url) return;
+    var target = selectedElement;
+    if ((!target || (payload.selector && generateSelector(target) !== payload.selector)) && payload.selector) {
+      try { target = document.querySelector(payload.selector); } catch (_) { target = null; }
+    }
+    if (!target) return;
+    if (payload.kind === 'background') {
+      target.style.backgroundImage = 'url("' + String(payload.url).replace(/"/g, '\\"') + '")';
+    } else if (target.tagName && target.tagName.toLowerCase() === 'img') {
+      target.setAttribute('src', payload.url);
+    }
+    selectedElement = target;
+    window.parent.postMessage(
+      { type: MESSAGE_TYPE.ELEMENT_SELECTED, payload: collectElementInfo(target) },
+      '*'
+    );
   }
 
   function clearHoverOutline() {
@@ -214,6 +249,9 @@ export const VISUAL_EDITOR_IFRAME_SCRIPT = `
       case MESSAGE_TYPE.CLEAR_SELECTION:
         clearSelection();
         break;
+      case MESSAGE_TYPE.REPLACE_IMAGE:
+        replaceImage(data.payload);
+        break;
     }
   });
 
@@ -257,10 +295,10 @@ function injectIframeScript(iframeEl: HTMLIFrameElement | null): boolean {
   }
 }
 
-function postToIframe(iframeEl: HTMLIFrameElement | null, type: string): void {
+function postToIframe(iframeEl: HTMLIFrameElement | null, type: string, payload?: unknown): void {
   if (!iframeEl?.contentWindow) return
   const targetOrigin = getIframeTargetOrigin(iframeEl)
-  iframeEl.contentWindow.postMessage({ type }, targetOrigin)
+  iframeEl.contentWindow.postMessage({ type, payload }, targetOrigin)
 }
 
 function enableIframeEditor(iframeEl: HTMLIFrameElement | null): void {
@@ -289,6 +327,9 @@ export function buildPromptWithElement(
     `元素ID: ${element.id || '无'}`,
     `class: ${element.className || '无'}`,
     `文本内容: ${element.textContent || '无'}`,
+    `图片地址: ${element.currentSrc || element.src || '无'}`,
+    `图片替代文本: ${element.alt || '无'}`,
+    `背景图片: ${element.backgroundImage || '无'}`,
   ].join('\n')
 
   return `${userMessage}\n\n${elementInfo}`
@@ -411,6 +452,25 @@ export function useVisualEditor(options?: {
     }
   }
 
+  function replaceSelectedImage(url: string): boolean {
+    const element = selectedElement.value
+    const iframeEl = boundIframeEl.value
+    if (!element?.isImage || !iframeEl) return false
+    const kind = element.tagName === 'img' ? 'img' : 'background'
+    postToIframe(iframeEl, VISUAL_EDITOR_MESSAGE_TYPE.REPLACE_IMAGE, {
+      url,
+      selector: element.selector,
+      kind,
+    })
+    if (kind === 'img') {
+      element.src = url
+      element.currentSrc = url
+    } else {
+      element.backgroundImage = `url("${url}")`
+    }
+    return true
+  }
+
   onMounted(() => {
     window.addEventListener('message', handleMessage)
   })
@@ -438,6 +498,7 @@ export function useVisualEditor(options?: {
     exitEditMode,
     clearSelectedElement,
     toggleEditMode,
+    replaceSelectedImage,
     buildPromptWithElement: (userMessage: string) =>
       buildPromptWithElement(userMessage, selectedElement.value),
   }

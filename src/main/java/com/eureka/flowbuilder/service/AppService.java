@@ -2,8 +2,10 @@ package com.eureka.flowbuilder.service;
 
 import com.eureka.flowbuilder.model.dto.app.AppAddRequest;
 import com.eureka.flowbuilder.model.dto.app.AppQueryRequest;
+import com.eureka.flowbuilder.model.dto.app.ReplaceImageRequest;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.vo.AppVO;
+import com.eureka.flowbuilder.model.vo.ReplaceImageVO;
 import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
@@ -88,4 +90,9 @@ public interface AppService extends IService<App> {
      * @return 构建状态
      */
     VueBuildStatusVO getVuePreviewBuildStatus(Long appId, User loginUser);
+
+    /**
+     * 使用同团队资产替换生成源码中的图片 URL。
+     */
+    ReplaceImageVO replaceImage(ReplaceImageRequest request, User loginUser);
 }

@@ -2,7 +2,6 @@ package com.eureka.flowbuilder.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
-import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.exception.ThrowUtils;
 import com.eureka.flowbuilder.model.dto.chathistory.ChatHistoryQueryRequest;
@@ -10,6 +9,7 @@ import com.eureka.flowbuilder.model.entity.App;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.model.enums.ChatHistoryMessageTypeEnum;
 import com.eureka.flowbuilder.service.AppService;
+import com.eureka.flowbuilder.service.TeamAuthorizationService;
 import com.eureka.flowbuilder.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -45,6 +45,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     @Lazy
     @Resource
     private UserService userService;
+
+    @Resource
+    private TeamAuthorizationService teamAuthorizationService;
 
     @Override
     public boolean addChatMessage(Long appId, String message, String messageType, Long userId) {
@@ -123,6 +126,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 验证应用是否存在
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        teamAuthorizationService.requireView(app, loginUser);
         // 构建查询条件
         ChatHistoryQueryRequest queryRequest = new ChatHistoryQueryRequest();
         queryRequest.setAppId(appId);

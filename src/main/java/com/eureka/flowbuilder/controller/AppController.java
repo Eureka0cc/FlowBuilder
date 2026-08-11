@@ -20,6 +20,7 @@ import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.eureka.flowbuilder.ratelimiter.annotation.RateLimit;
 import com.eureka.flowbuilder.ratelimiter.enums.RateLimitType;
 import com.eureka.flowbuilder.service.ProjectDownloadService;
+import com.eureka.flowbuilder.service.TeamAuthorizationService;
 import com.eureka.flowbuilder.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -58,6 +59,9 @@ public class AppController {
 
     @Resource
     private ProjectDownloadService projectDownloadService;
+
+    @Resource
+    private TeamAuthorizationService teamAuthorizationService;
 
     /**
      * 应用聊天生成代码（流式 SSE）
@@ -167,10 +171,7 @@ public class AppController {
         // 判断是否存在
         App oldApp = appService.getById(id);
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        // 仅本人可更新
-        if (!oldApp.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
+        teamAuthorizationService.requireEdit(oldApp, loginUser);
         App app = new App();
         app.setId(id);
         app.setAppName(appUpdateRequest.getAppName());
@@ -198,10 +199,7 @@ public class AppController {
         // 判断是否存在
         App oldApp = appService.getById(id);
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
-        // 仅本人或管理员可删除
-        if (!oldApp.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
-        }
+        teamAuthorizationService.requireEdit(oldApp, loginUser);
         boolean result = appService.removeById(id);
         return ResultUtils.success(result);
     }
@@ -213,11 +211,13 @@ public class AppController {
      * @return 应用详情
      */
     @GetMapping("/get/vo")
-    public BaseResponse<AppVO> getAppVOById(long id) {
+    public BaseResponse<AppVO> getAppVOById(long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
         // 查询数据库
         App app = appService.getById(id);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
+        User loginUser = userService.getLoginUser(request);
+        teamAuthorizationService.requireView(app, loginUser);
         // 获取封装类（包含用户信息）
         return ResultUtils.success(appService.getAppVO(app));
     }
@@ -237,8 +237,12 @@ public class AppController {
         long pageSize = appQueryRequest.getPageSize();
         ThrowUtils.throwIf(pageSize > 20, ErrorCode.PARAMS_ERROR, "每页最多查询 20 个应用");
         long pageNum = appQueryRequest.getPageNum();
-        // 只查询当前用户的应用
-        appQueryRequest.setUserId(loginUser.getId());
+        if (appQueryRequest.getTeamId() == null) {
+            appQueryRequest.setUserId(loginUser.getId());
+        } else {
+            teamAuthorizationService.requireView(appQueryRequest.getTeamId(), loginUser);
+            appQueryRequest.setUserId(null);
+        }
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
         // 数据封装
@@ -246,6 +250,37 @@ public class AppController {
         List<AppVO> appVOList = appService.getAppVOList(appPage.getRecords());
         appVOPage.setRecords(appVOList);
         return ResultUtils.success(appVOPage);
+    }
+
+    /**
+     * 分页获取团队站点。
+     */
+    @PostMapping("/team/list/page/vo")
+    public BaseResponse<Page<AppVO>> listTeamAppVOByPage(@RequestBody AppQueryRequest appQueryRequest,
+                                                         HttpServletRequest request) {
+        ThrowUtils.throwIf(appQueryRequest == null || appQueryRequest.getTeamId() == null,
+                ErrorCode.PARAMS_ERROR, "团队 ID 不能为空");
+        ThrowUtils.throwIf(appQueryRequest.getPageSize() > 50, ErrorCode.PARAMS_ERROR, "每页最多查询 50 个应用");
+        User loginUser = userService.getLoginUser(request);
+        teamAuthorizationService.requireView(appQueryRequest.getTeamId(), loginUser);
+        appQueryRequest.setUserId(null);
+        Page<App> appPage = appService.page(
+                Page.of(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
+                appService.getQueryWrapper(appQueryRequest));
+        Page<AppVO> result = new Page<>(appQueryRequest.getPageNum(), appQueryRequest.getPageSize(),
+                appPage.getTotalRow());
+        result.setRecords(appService.getAppVOList(appPage.getRecords()));
+        return ResultUtils.success(result);
+    }
+
+    /**
+     * 使用团队资产替换生成源码中的图片 URL。
+     */
+    @PostMapping("/replace-image")
+    public BaseResponse<com.eureka.flowbuilder.model.vo.ReplaceImageVO> replaceImage(
+            @RequestBody ReplaceImageRequest replaceImageRequest, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appService.replaceImage(replaceImageRequest, loginUser));
     }
 
     /**
@@ -379,11 +414,9 @@ public class AppController {
         // 2. 查询应用信息
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 3. 权限校验：只有应用创建者可以下载代码
+        // 3. 团队查看者可下载；历史应用仍仅创建者/管理员可下载
         User loginUser = userService.getLoginUser(request);
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限下载该应用代码");
-        }
+        teamAuthorizationService.requireView(app, loginUser);
         // 4. 构建应用代码目录路径（生成目录，非部署目录）
         String codeGenType = app.getCodeGenType();
         String sourceDirName = codeGenType + "_" + appId;
@@ -405,6 +438,7 @@ public class AppController {
      * @return {@code true} 保存成功，{@code false} 保存失败
      */
     @PostMapping("/save")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean save(@RequestBody App app) {
         return appService.save(app);
     }
@@ -416,6 +450,7 @@ public class AppController {
      * @return {@code true} 删除成功，{@code false} 删除失败
      */
     @DeleteMapping("/remove/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean remove(@PathVariable Long id) {
         return appService.removeById(id);
     }
@@ -427,6 +462,7 @@ public class AppController {
      * @return {@code true} 更新成功，{@code false} 更新失败
      */
     @PutMapping("/update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean update(@RequestBody App app) {
         return appService.updateById(app);
     }
@@ -437,6 +473,7 @@ public class AppController {
      * @return 所有数据
      */
     @GetMapping("/list")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public List<App> list() {
         return appService.list();
     }
@@ -448,6 +485,7 @@ public class AppController {
      * @return 应用详情
      */
     @GetMapping("/getInfo/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public App getInfo(@PathVariable Long id) {
         return appService.getById(id);
     }
@@ -459,6 +497,7 @@ public class AppController {
      * @return 分页对象
      */
     @GetMapping("/page")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public Page<App> page(Page<App> page) {
         return appService.page(page);
     }

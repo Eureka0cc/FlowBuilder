@@ -119,12 +119,20 @@
                 <span v-if="selectedElement.textContent" class="element-text">
                   {{ selectedElement.textContent }}
                 </span>
+                <a-button
+                  v-if="selectedElement.isImage && appInfo?.teamId"
+                  type="link"
+                  size="small"
+                  @click="assetPickerOpen = true"
+                >
+                  从团队资产选择
+                </a-button>
               </div>
             </template>
           </a-alert>
           <a-tooltip
-            v-if="!isAppOwner"
-            title="无法在别人的作品下对话哦~"
+            v-if="!canEditApp"
+            title="当前团队角色没有编辑权限"
             placement="top"
             color="#ff4d4f"
           >
@@ -197,7 +205,7 @@
               shape="circle"
               class="send-btn"
               :loading="sending"
-              :disabled="!inputMessage.trim() || !isAppOwner"
+              :disabled="!inputMessage.trim() || !canEditApp"
               @click="handleSend"
             >
               <arrow-up-outlined />
@@ -369,6 +377,12 @@
 
       <a-skeleton v-else active :paragraph="{ rows: 6 }" />
     </a-drawer>
+    <AssetPickerModal
+      v-model:open="assetPickerOpen"
+      :team-id="appInfo?.teamId"
+      :can-upload="canEditApp"
+      @selected="handleAssetSelected"
+    />
   </div>
 </template>
 
@@ -395,14 +409,19 @@ import {
 } from '@ant-design/icons-vue'
 import { useVisualEditor } from '@/utils/visualEditor'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { getAppVoById, deleteApp, deployApp, getVuePreviewBuildStatus } from '@/api/appController'
+import { replaceAppImage } from '@/api/teamController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
+import AssetPickerModal from '@/components/AssetPickerModal.vue'
+import type { TeamAsset } from '@/types/team'
 import { getCodeGenTypeText, CodeGenTypeEnum } from '@/constants/codeGenType'
 import { getStaticPreviewUrl, API_BASE_URL } from '@/config/env'
 
 const route = useRoute()
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
+const workspaceStore = useWorkspaceStore()
 
 // 应用ID
 const appId = computed(() => route.params.id as string)
@@ -482,6 +501,7 @@ const {
   clearSelectedElement,
   toggleEditMode,
   buildPromptWithElement,
+  replaceSelectedImage,
 } = useVisualEditor({
   previewReady: () => showPreview.value && previewBuildReady.value && !!previewUrl.value,
   onInjectFailed: () => {
@@ -490,18 +510,19 @@ const {
 })
 
 const isWideScreen = ref(true)
+const assetPickerOpen = ref(false)
 
 const updateScreenSize = () => {
   isWideScreen.value = window.innerWidth > 992
 }
 
 const showVisualEditorButton = computed(
-  () => isAppOwner.value && !generating.value && isWideScreen.value && canUseVisualEditor.value,
+  () => canEditApp.value && !generating.value && isWideScreen.value && canUseVisualEditor.value,
 )
 
 const showVisualEditorWaiting = computed(
   () =>
-    isAppOwner.value &&
+    canEditApp.value &&
     !generating.value &&
     isWideScreen.value &&
     showPreview.value &&
@@ -509,7 +530,7 @@ const showVisualEditorWaiting = computed(
 )
 
 const showVisualEditorMobileHint = computed(
-  () => isAppOwner.value && !generating.value && !isWideScreen.value,
+  () => canEditApp.value && !generating.value && !isWideScreen.value,
 )
 
 const inputPlaceholder = computed(() => {
@@ -521,6 +542,56 @@ const inputPlaceholder = computed(() => {
 
 const onPreviewIframeLoad = () => {
   reattachIframe(getPreviewIframe())
+}
+
+const extractBackgroundUrl = (value?: string) => {
+  if (!value) return ''
+  const match = value.match(/^url\((['"]?)(.*?)\1\)$/)
+  return match?.[2] || value
+}
+
+const handleAssetSelected = async (asset: TeamAsset) => {
+  const element = selectedElement.value
+  if (!element?.isImage) return
+
+  const selector = element.selector
+  const kind = element.tagName === 'img' ? 'img' : 'background'
+  const oldUrl =
+    kind === 'img'
+      ? element.currentSrc || element.src || ''
+      : extractBackgroundUrl(element.backgroundImage)
+  if (!oldUrl) {
+    message.error('无法识别当前图片地址，请改用 AI 指令替换')
+    return
+  }
+
+  if (!replaceSelectedImage(asset.url)) {
+    message.error('无法更新预览中的图片')
+    return
+  }
+
+  try {
+    const res = await replaceAppImage({
+      appId: appId.value,
+      assetId: asset.id,
+      oldUrl,
+      selector,
+      kind,
+    })
+    if (res.data.code !== 0 || !res.data.data?.replacementCount) {
+      throw new Error(res.data.message || '保存图片替换失败')
+    }
+    clearSelectedElement(getPreviewIframe())
+    message.success('图片已替换')
+    if (isVueProject.value) scheduleVuePreviewRefresh()
+    else {
+      previewCacheVersion.value = Date.now()
+      refreshPreviewFrame()
+    }
+  } catch (error) {
+    if (oldUrl) replaceSelectedImage(oldUrl)
+    message.error(error instanceof Error ? error.message : '图片替换失败，已恢复原图')
+  }
 }
 
 // 滚动到底部
@@ -1239,11 +1310,19 @@ const isAppOwner = computed(() => {
   return appInfo.value.userId === loginUserStore.loginUser.id
 })
 
-// 是否可以管理应用（本人或管理员）
+// 是否可以编辑应用（创建者、管理员或团队 OWNER/EDITOR）
+const canEditApp = computed(() => {
+  if (isAppOwner.value || loginUserStore.loginUser.userRole === 'admin') return true
+  if (!appInfo.value?.teamId) return false
+  const team = workspaceStore.teams.find(
+    (item) => String(item.id) === String(appInfo.value?.teamId),
+  )
+  return team?.canEdit ?? ['owner', 'editor'].includes(team?.currentUserRole?.toLowerCase() || '')
+})
+
+// 是否可以管理应用
 const canManageApp = computed(() => {
-  if (!appInfo.value?.userId || !loginUserStore.loginUser.id) return false
-  const isAdmin = loginUserStore.loginUser.userRole === 'admin'
-  return isAppOwner.value || isAdmin
+  return canEditApp.value
 })
 
 // 格式化创建时间
@@ -1318,10 +1397,11 @@ onMounted(() => {
   }
   // 页面加载时滚动到顶部
   window.scrollTo(0, 0)
+  workspaceStore.fetchTeams().catch(() => undefined)
   loadAppInfo().then(() => {
     loadChatHistory().then(() => {
       // 自己的应用且无对话历史时，自动发送初始提示词
-      if (isAppOwner.value && messages.value.length === 0 && appInfo.value?.initPrompt) {
+      if (canEditApp.value && messages.value.length === 0 && appInfo.value?.initPrompt) {
         sendInitialPrompt()
       }
     })
