@@ -5,6 +5,7 @@ import com.mybatisflex.annotation.Id;
 import com.mybatisflex.annotation.KeyType;
 import com.mybatisflex.annotation.Table;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import java.io.Serial;
@@ -14,8 +15,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import javax.crypto.KeyGenerator;
 
 /**
  * 用户 实体类。
@@ -73,6 +72,36 @@ public class User implements Serializable {
      */
     @Column("userRole")
     private String userRole;
+
+    /**
+     * 套餐编码：free/pro/enterprise
+     */
+    @Column("planCode")
+    private String planCode;
+
+    /**
+     * 积分余额（内部单位 CNY，与 AI estimatedCost 一致）
+     */
+    @Column("creditBalance")
+    private BigDecimal creditBalance;
+
+    /**
+     * 余额更新时间
+     */
+    @Column("creditUpdatedTime")
+    private LocalDateTime creditUpdatedTime;
+
+    /**
+     * 套餐到期时间（空表示不过期）
+     */
+    @Column("planExpireTime")
+    private LocalDateTime planExpireTime;
+
+    /**
+     * 月额度上次重置时间
+     */
+    @Column("monthlyQuotaResetAt")
+    private LocalDateTime monthlyQuotaResetAt;
 
     /**
      * 编辑时间

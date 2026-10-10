@@ -66,6 +66,7 @@ public class ChatHistoryController {
         ThrowUtils.throwIf(chatHistoryQueryRequest == null, ErrorCode.PARAMS_ERROR);
         long pageNum = chatHistoryQueryRequest.getPageNum();
         long pageSize = chatHistoryQueryRequest.getPageSize();
+        ThrowUtils.throwIf(pageSize < 1 || pageSize > 50, ErrorCode.PARAMS_ERROR, "页面大小必须在 1-50 之间");
         // 查询数据
         QueryWrapper queryWrapper = chatHistoryService.getQueryWrapper(chatHistoryQueryRequest);
         Page<ChatHistory> result = chatHistoryService.page(Page.of(pageNum, pageSize), queryWrapper);
@@ -79,6 +80,7 @@ public class ChatHistoryController {
      * @return {@code true} 保存成功，{@code false} 保存失败
      */
     @PostMapping("/save")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean save(@RequestBody ChatHistory chatHistory) {
         return chatHistoryService.save(chatHistory);
     }
@@ -90,6 +92,7 @@ public class ChatHistoryController {
      * @return {@code true} 删除成功，{@code false} 删除失败
      */
     @DeleteMapping("/remove/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean remove(@PathVariable Long id) {
         return chatHistoryService.removeById(id);
     }
@@ -101,6 +104,7 @@ public class ChatHistoryController {
      * @return {@code true} 更新成功，{@code false} 更新失败
      */
     @PutMapping("/update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean update(@RequestBody ChatHistory chatHistory) {
         return chatHistoryService.updateById(chatHistory);
     }
@@ -111,6 +115,7 @@ public class ChatHistoryController {
      * @return 所有数据
      */
     @GetMapping("/list")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public List<ChatHistory> list() {
         return chatHistoryService.list();
     }
@@ -122,6 +127,7 @@ public class ChatHistoryController {
      * @return 对话历史详情
      */
     @GetMapping("/getInfo/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public ChatHistory getInfo(@PathVariable Long id) {
         return chatHistoryService.getById(id);
     }
@@ -133,6 +139,7 @@ public class ChatHistoryController {
      * @return 分页对象
      */
     @GetMapping("/page")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public Page<ChatHistory> page(Page<ChatHistory> page) {
         return chatHistoryService.page(page);
     }

@@ -5,20 +5,27 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
+import com.eureka.flowbuilder.config.BillingProperties;
 import com.eureka.flowbuilder.model.dto.user.UserQueryRequest;
 import com.eureka.flowbuilder.model.enums.UserRoleEnum;
 import com.eureka.flowbuilder.model.vo.LoginUserVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
+import com.eureka.flowbuilder.service.CreditService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.eureka.flowbuilder.model.entity.User;
 import com.eureka.flowbuilder.mapper.UserMapper;
 import com.eureka.flowbuilder.service.UserService;
+import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -32,6 +39,13 @@ import static com.eureka.flowbuilder.constant.UserConstant.USER_LOGIN_STATE;
  */
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements UserService{
+
+    @Lazy
+    @Resource
+    private CreditService creditService;
+
+    @Resource
+    private BillingProperties billingProperties;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -63,10 +77,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         user.setUserPassword(encryptPassword);
         user.setUserName("用户" + userAccount);
         user.setUserRole(UserRoleEnum.USER.getValue());
+        user.setPlanCode("free");
+        user.setCreditBalance(BigDecimal.ZERO);
+        user.setCreditUpdatedTime(LocalDateTime.now());
         boolean saveResult = this.save(user);
         if (!saveResult) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "注册失败，数据库错误");
         }
+        creditService.initForNewUser(user.getId());
         return user.getId();
     }
 
@@ -77,6 +95,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         }
         LoginUserVO loginUserVO = new LoginUserVO();
         BeanUtils.copyProperties(user, loginUserVO);
+        loginUserVO.setCreditDisplay(toCreditDisplay(user.getCreditBalance()));
         return loginUserVO;
     }
 
@@ -145,6 +164,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         }
         UserVO userVO = new UserVO();
         BeanUtil.copyProperties(user, userVO);
+        userVO.setCreditDisplay(toCreditDisplay(user.getCreditBalance()));
         return userVO;
     }
 
@@ -182,6 +202,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         // 盐值，混淆密码
         final String SALT = "eureka";
         return DigestUtils.md5DigestAsHex((SALT + userPassword).getBytes());
+    }
+
+    private BigDecimal toCreditDisplay(BigDecimal creditBalance) {
+        BigDecimal factor = billingProperties.getCreditDisplayFactor() == null
+                ? new BigDecimal("100")
+                : billingProperties.getCreditDisplayFactor();
+        BigDecimal balance = creditBalance == null ? BigDecimal.ZERO : creditBalance;
+        return balance.multiply(factor).setScale(2, RoundingMode.HALF_UP);
     }
 
 }

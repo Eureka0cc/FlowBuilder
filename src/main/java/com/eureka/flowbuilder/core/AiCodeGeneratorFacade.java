@@ -15,11 +15,13 @@ import com.eureka.flowbuilder.core.saver.CodeFileSaverExecutor;
 import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ErrorCode;
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
+import com.eureka.flowbuilder.service.AiUsageLogService;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.tool.ToolExecution;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -37,6 +39,15 @@ public class AiCodeGeneratorFacade {
 
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+
+    @Resource
+    private AiUsageLogService aiUsageLogService;
+
+    @Value("${langchain4j.open-ai.streaming-chat-model.model-name}")
+    private String streamingModelName;
+
+    @Value("${langchain4j.open-ai.reasoning-streaming-chat-model.model-name}")
+    private String reasoningModelName;
 
     /**
      * 统一入口：根据类型生成并保存代码
@@ -76,6 +87,11 @@ public class AiCodeGeneratorFacade {
      * @param appId           应用ID
      */
     public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum, Long appId) {
+        return generateAndSaveCodeStream(userMessage, codeGenTypeEnum, appId, null);
+    }
+
+    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenTypeEnum,
+                                                  Long appId, Long userId) {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
@@ -83,16 +99,16 @@ public class AiCodeGeneratorFacade {
         AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId, codeGenTypeEnum);
         return switch (codeGenTypeEnum) {
             case HTML -> {
-                Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
-                yield processCodeStream(codeStream, CodeGenTypeEnum.HTML, appId);
+                TokenStream codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
+                yield processCodeTokenStream(codeStream, CodeGenTypeEnum.HTML, appId, userId);
             }
             case MULTI_FILE -> {
-                Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
-                yield processCodeStream(codeStream, CodeGenTypeEnum.MULTI_FILE, appId);
+                TokenStream codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMessage);
+                yield processCodeTokenStream(codeStream, CodeGenTypeEnum.MULTI_FILE, appId, userId);
             }
             case VUE_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId, userMessage);
-                yield processTokenStream(tokenStream, appId);
+                yield processTokenStream(tokenStream, appId, userId);
             }
             default -> {
                 String errorMessage = "不支持的生成类型：" + codeGenTypeEnum.getValue();
@@ -108,8 +124,9 @@ public class AiCodeGeneratorFacade {
      * @param appId 应用Id
      * @return Flux<String> 流式响应
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId) {
+    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId, Long userId) {
         return Flux.create(sink -> {
+            long startTime = System.currentTimeMillis();
             tokenStream.onPartialResponse((String partialResponse) -> {
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
                         sink.next(JSONUtil.toJsonStr(aiResponseMessage));
@@ -123,6 +140,9 @@ public class AiCodeGeneratorFacade {
                         sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
                     })
                     .onCompleteResponse((ChatResponse response) -> {
+                        aiUsageLogService.recordSuccess(appId, userId, reasoningModelName,
+                                CodeGenTypeEnum.VUE_PROJECT.getValue(), "CHAT_GEN",
+                                response.metadata().tokenUsage(), System.currentTimeMillis() - startTime);
                         String projectPath = AppConstant.getVueProjectDirPath(appId);
                         log.info("Vue 项目 AI 对话完成，开始异步构建: {}", projectPath);
                         // 同步写入 building，避免前端在 SSE 结束后轮询到上一次 ready=true
@@ -131,7 +151,10 @@ public class AiCodeGeneratorFacade {
                         sink.complete();
                     })
                     .onError((Throwable error) -> {
-                        error.printStackTrace();
+                        aiUsageLogService.recordFailure(appId, userId, reasoningModelName,
+                                CodeGenTypeEnum.VUE_PROJECT.getValue(), "CHAT_GEN",
+                                System.currentTimeMillis() - startTime, error);
+                        log.error("Vue 项目 AI 对话失败: appId={}", appId, error);
                         sink.error(error);
                     })
                     .start();
@@ -147,23 +170,35 @@ public class AiCodeGeneratorFacade {
      * @param appId     应用ID
      * @return 流式响应
      */
-    private Flux<String> processCodeStream(Flux<String> codeStream, CodeGenTypeEnum codeGenType, Long appId) {
-        StringBuilder codeBuilder = new StringBuilder();
-        return codeStream.doOnNext(chunk -> {
-            // 实时收集代码片段
-            codeBuilder.append(chunk);
-        }).doOnComplete(() -> {
-            // 流式返回完成后保存代码
-            try {
-                String completeCode = codeBuilder.toString();
-                // 使用执行器解析代码
-                Object parsedResult = CodeParserExecutor.executeParser(completeCode, codeGenType);
-                // 使用执行器保存代码
-                File savedDir = CodeFileSaverExecutor.executeSaver(parsedResult, codeGenType, appId);
-                log.info("保存成功，路径为：" + savedDir.getAbsolutePath());
-            } catch (Exception e) {
-                log.error("保存失败: {}", e.getMessage());
-            }
+    private Flux<String> processCodeTokenStream(TokenStream tokenStream, CodeGenTypeEnum codeGenType,
+                                                Long appId, Long userId) {
+        return Flux.create(sink -> {
+            StringBuilder codeBuilder = new StringBuilder();
+            long startTime = System.currentTimeMillis();
+            tokenStream.onPartialResponse(chunk -> {
+                        codeBuilder.append(chunk);
+                        sink.next(chunk);
+                    })
+                    .onCompleteResponse(response -> {
+                        try {
+                            Object parsedResult = CodeParserExecutor.executeParser(codeBuilder.toString(), codeGenType);
+                            File savedDir = CodeFileSaverExecutor.executeSaver(parsedResult, codeGenType, appId);
+                            log.info("保存成功，路径为：{}", savedDir.getAbsolutePath());
+                        } catch (Exception e) {
+                            log.error("保存失败: {}", e.getMessage(), e);
+                        }
+                        aiUsageLogService.recordSuccess(appId, userId, streamingModelName,
+                                codeGenType.getValue(), "CHAT_GEN", response.metadata().tokenUsage(),
+                                System.currentTimeMillis() - startTime);
+                        sink.complete();
+                    })
+                    .onError(error -> {
+                        aiUsageLogService.recordFailure(appId, userId, streamingModelName,
+                                codeGenType.getValue(), "CHAT_GEN",
+                                System.currentTimeMillis() - startTime, error);
+                        sink.error(error);
+                    })
+                    .start();
         });
     }
 

@@ -124,6 +124,7 @@ public class UserController {
      * @return {@code true} 删除成功，{@code false} 删除失败
      */
     @DeleteMapping("/remove/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean remove(@PathVariable Long id) {
         return userService.removeById(id);
     }
@@ -135,6 +136,7 @@ public class UserController {
      * @return {@code true} 更新成功，{@code false} 更新失败
      */
     @PutMapping("/update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean update(@RequestBody User user) {
         return userService.updateById(user);
     }
@@ -145,6 +147,7 @@ public class UserController {
      * @return 所有数据
      */
     @GetMapping("/list")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public List<User> list() {
         return userService.list();
     }
@@ -156,6 +159,7 @@ public class UserController {
      * @return 用户详情
      */
     @GetMapping("/getInfo/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public User getInfo(@PathVariable Long id) {
         return userService.getById(id);
     }
@@ -167,6 +171,7 @@ public class UserController {
      * @return 分页对象
      */
     @GetMapping("/page")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public Page<User> page(Page<User> page) {
         return userService.page(page);
     }
@@ -205,6 +210,7 @@ public class UserController {
      * 根据 id 获取包装类
      */
     @GetMapping("/get/vo")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<UserVO> getUserVOById(long id) {
         BaseResponse<User> response = getUserById(id);
         User user = response.getData();

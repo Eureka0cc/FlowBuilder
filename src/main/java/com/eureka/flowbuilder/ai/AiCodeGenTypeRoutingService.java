@@ -1,6 +1,7 @@
 package com.eureka.flowbuilder.ai;
 
 import com.eureka.flowbuilder.model.enums.CodeGenTypeEnum;
+import dev.langchain4j.service.Result;
 import dev.langchain4j.service.SystemMessage;
 
 /**
@@ -18,5 +19,5 @@ public interface AiCodeGenTypeRoutingService {
      * @return 推荐的代码生成类型
      */
     @SystemMessage(fromResource = "prompt/codegen-routing-system-prompt.txt")
-    CodeGenTypeEnum routeCodeGenType(String userPrompt);
+    Result<CodeGenTypeEnum> routeCodeGenType(String userPrompt);
 }

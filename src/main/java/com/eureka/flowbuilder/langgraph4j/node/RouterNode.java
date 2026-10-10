@@ -24,7 +24,7 @@ public class RouterNode {
                 // 每次创建新实例，避免多线程共享单例导致的 ConcurrentModificationException
                 AiCodeGenTypeRoutingServiceFactory factory = SpringContextUtil.getBean(AiCodeGenTypeRoutingServiceFactory.class);
                 AiCodeGenTypeRoutingService routingService = factory.createAiCodeGenTypeRoutingService();
-                generationType = routingService.routeCodeGenType(context.getOriginalPrompt());
+                generationType = routingService.routeCodeGenType(context.getOriginalPrompt()).content();
                 log.info("AI智能路由完成，选择类型: {} ({})", generationType.getValue(), generationType.getText());
             } catch (Exception e) {
                 log.error("AI智能路由失败，使用默认HTML类型: {}", e.getMessage());

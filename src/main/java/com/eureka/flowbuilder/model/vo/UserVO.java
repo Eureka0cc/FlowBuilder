@@ -3,6 +3,7 @@ package com.eureka.flowbuilder.model.vo;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -37,6 +38,16 @@ public class UserVO implements Serializable {
      * 用户角色：user/admin
      */
     private String userRole;
+
+    /**
+     * 套餐编码
+     */
+    private String planCode;
+
+    /**
+     * 积分余额（展示单位：积分，1 积分 = ¥0.01）
+     */
+    private BigDecimal creditDisplay;
 
     /**
      * 创建时间

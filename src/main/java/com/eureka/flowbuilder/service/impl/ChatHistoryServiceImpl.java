@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.eureka.flowbuilder.constant.UserConstant;
 import com.eureka.flowbuilder.exception.ErrorCode;
+import com.eureka.flowbuilder.exception.BusinessException;
 import com.eureka.flowbuilder.exception.ThrowUtils;
 import com.eureka.flowbuilder.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.eureka.flowbuilder.model.entity.App;
@@ -130,6 +131,11 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 验证应用是否存在
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        boolean isOwner = app.getUserId().equals(loginUser.getId());
+        boolean isAdmin = UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole());
+        if (!isOwner && !isAdmin) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权查看该应用的对话记录");
+        }
         // 构建查询条件
         ChatHistoryQueryRequest queryRequest = new ChatHistoryQueryRequest();
         queryRequest.setAppId(appId);

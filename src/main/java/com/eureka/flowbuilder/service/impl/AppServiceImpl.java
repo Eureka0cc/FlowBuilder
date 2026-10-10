@@ -26,6 +26,8 @@ import com.eureka.flowbuilder.model.vo.AppVO;
 import com.eureka.flowbuilder.model.vo.UserVO;
 import com.eureka.flowbuilder.model.vo.VueBuildStatusVO;
 import com.eureka.flowbuilder.service.ChatHistoryService;
+import com.eureka.flowbuilder.service.AiUsageLogService;
+import com.eureka.flowbuilder.service.CreditService;
 import com.eureka.flowbuilder.service.ScreenshotService;
 import com.eureka.flowbuilder.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -36,6 +38,7 @@ import com.eureka.flowbuilder.service.AppService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import dev.langchain4j.service.Result;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -81,6 +84,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     @Resource
+    private AiUsageLogService aiUsageLogService;
+
+    @Resource
+    private CreditService creditService;
+
+    @Value("${langchain4j.open-ai.routing-chat-model.model-name}")
+    private String routingModelName;
+
+    @Resource
     private StringRedisTemplate stringRedisTemplate;
 
     @Override
@@ -88,6 +100,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 参数校验
         String initPrompt = appAddRequest.getInitPrompt();
         ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化 prompt 不能为空");
+        long existingAppCount = this.count(QueryWrapper.create().eq("userId", loginUser.getId()));
+        creditService.ensureAppLimit(loginUser.getId(), existingAppCount);
+        creditService.ensureSufficient(loginUser.getId());
         // 构造入库对象
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
@@ -96,11 +111,23 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
         // 使用 AI 智能选择代码生成类型(多例模式)
         AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
-        CodeGenTypeEnum selectedCodeGenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        long routingStartTime = System.currentTimeMillis();
+        Result<CodeGenTypeEnum> routingResult;
+        try {
+            routingResult = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        } catch (RuntimeException e) {
+            aiUsageLogService.recordFailure(null, loginUser.getId(), routingModelName,
+                    null, "ROUTING", System.currentTimeMillis() - routingStartTime, e);
+            throw e;
+        }
+        CodeGenTypeEnum selectedCodeGenType = routingResult.content();
         app.setCodeGenType(selectedCodeGenType.getValue());
         // 插入数据库
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
+        aiUsageLogService.recordSuccess(app.getId(), loginUser.getId(), routingModelName,
+                selectedCodeGenType.getValue(), "ROUTING", routingResult.tokenUsage(),
+                System.currentTimeMillis() - routingStartTime);
         log.info("应用创建成功，ID: {}, 类型: {}", app.getId(), selectedCodeGenType.getValue());
         return app.getId();
     }
@@ -180,6 +207,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (!app.getUserId().equals(loginUser.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
         }
+        // 3.5 积分预检（余额不足则拒绝生成）
+        creditService.ensureSufficient(loginUser.getId());
         // 4. 获取应用的代码生成类型
         String codeGenTypeStr = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenTypeStr);
@@ -189,7 +218,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 5. 通过校验后，添加用户消息到对话历史
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         // 6. 调用 AI 生成代码（流式）
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(
+                message, codeGenTypeEnum, appId, loginUser.getId());
         // 7. 收集AI响应内容并在完成后记录到对话历史
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }

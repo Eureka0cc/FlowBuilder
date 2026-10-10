@@ -405,6 +405,7 @@ public class AppController {
      * @return {@code true} 保存成功，{@code false} 保存失败
      */
     @PostMapping("/save")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean save(@RequestBody App app) {
         return appService.save(app);
     }
@@ -416,6 +417,7 @@ public class AppController {
      * @return {@code true} 删除成功，{@code false} 删除失败
      */
     @DeleteMapping("/remove/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean remove(@PathVariable Long id) {
         return appService.removeById(id);
     }
@@ -427,6 +429,7 @@ public class AppController {
      * @return {@code true} 更新成功，{@code false} 更新失败
      */
     @PutMapping("/update")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public boolean update(@RequestBody App app) {
         return appService.updateById(app);
     }
@@ -437,6 +440,7 @@ public class AppController {
      * @return 所有数据
      */
     @GetMapping("/list")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public List<App> list() {
         return appService.list();
     }
@@ -448,6 +452,7 @@ public class AppController {
      * @return 应用详情
      */
     @GetMapping("/getInfo/{id}")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public App getInfo(@PathVariable Long id) {
         return appService.getById(id);
     }
@@ -459,6 +464,7 @@ public class AppController {
      * @return 分页对象
      */
     @GetMapping("/page")
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public Page<App> page(Page<App> page) {
         return appService.page(page);
     }
