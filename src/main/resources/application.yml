@@ -80,3 +80,46 @@ langchain4j:
       model-name: deepseek-v4-flash
       log-requests: true
       log-responses: true
+
+# AI 用量与费用估算（单位：每百万 Token）
+ai:
+  usage:
+    currency: ${AI_USAGE_CURRENCY:CNY}
+    models:
+      deepseek-v4-flash:
+        input-price-per-million: ${DEEPSEEK_FLASH_INPUT_PRICE_PER_MILLION:0}
+        output-price-per-million: ${DEEPSEEK_FLASH_OUTPUT_PRICE_PER_MILLION:0}
+      deepseek-reasoner:
+        input-price-per-million: ${DEEPSEEK_REASONER_INPUT_PRICE_PER_MILLION:0}
+        output-price-per-million: ${DEEPSEEK_REASONER_OUTPUT_PRICE_PER_MILLION:0}
+
+# 套餐与积分（内部余额单位 CNY；展示积分 = CNY × 100）
+billing:
+  min-reserve: 0.01
+  min-consume: 0.01
+  credit-display-factor: 100
+  plans:
+    free:
+      name: 免费版
+      description: 适合个人试用，含基础生成额度
+      signup-gift: 1.00
+      monthly-quota: 1.00
+      app-limit: 3
+      chat-rate: 5
+      chat-rate-interval-seconds: 60
+    pro:
+      name: 专业版
+      description: 适合独立开发者与小团队
+      signup-gift: 0
+      monthly-quota: 20.00
+      app-limit: 50
+      chat-rate: 20
+      chat-rate-interval-seconds: 60
+    enterprise:
+      name: 企业版
+      description: 适合企业团队，更高额度与限流
+      signup-gift: 0
+      monthly-quota: 200.00
+      # app-limit 缺省表示不限制
+      chat-rate: 60
+      chat-rate-interval-seconds: 60

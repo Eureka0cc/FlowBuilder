@@ -12,6 +12,8 @@ public enum ErrorCode {
     TOO_MANY_REQUESTS_ERROR(42900, "请求过于频繁"),
     NOT_FOUND_ERROR(40400, "请求数据不存在"),
     FORBIDDEN_ERROR(40300, "禁止访问"),
+    CREDIT_INSUFFICIENT(40200, "积分余额不足"),
+    PLAN_LIMIT_EXCEEDED(40201, "已达套餐限额"),
     SYSTEM_ERROR(50000, "系统内部异常"),
     OPERATION_ERROR(50001, "操作失败");
 
