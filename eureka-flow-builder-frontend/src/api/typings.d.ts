@@ -239,6 +239,8 @@ declare namespace API {
     userAvatar?: string
     userProfile?: string
     userRole?: string
+    planCode?: string
+    creditDisplay?: number
     createTime?: string
     updateTime?: string
   }
@@ -374,6 +376,98 @@ declare namespace API {
     userAvatar?: string
     userProfile?: string
     userRole?: string
+    planCode?: string
+    creditDisplay?: number
     createTime?: string
+  }
+
+  type BillingAccountVO = {
+    planCode?: string
+    planName?: string
+    planDescription?: string
+    creditBalance?: number
+    creditDisplay?: number
+    monthlyQuota?: number
+    appLimit?: number
+    appCount?: number
+    chatRate?: number
+    planExpireTime?: string
+    monthlyQuotaResetAt?: string
+    creditUpdatedTime?: string
+    plans?: PlanOptionVO[]
+  }
+
+  type PlanOptionVO = {
+    planCode?: string
+    name?: string
+    description?: string
+    monthlyQuota?: number
+    monthlyQuotaDisplay?: number
+    appLimit?: number
+    chatRate?: number
+    signupGift?: number
+    signupGiftDisplay?: number
+  }
+
+  type CreditLedgerVO = {
+    id?: string
+    userId?: string
+    changeAmount?: number
+    changeDisplay?: number
+    balanceAfter?: number
+    balanceAfterDisplay?: number
+    bizType?: string
+    bizId?: string
+    remark?: string
+    operatorId?: string
+    createTime?: string
+  }
+
+  type AdminCreditRechargeRequest = {
+    userId?: string | number
+    amount?: number
+    remark?: string
+  }
+
+  type AdminCreditAdjustRequest = {
+    userId?: string | number
+    amount?: number
+    remark?: string
+  }
+
+  type AdminAssignPlanRequest = {
+    userId?: string | number
+    planCode?: string
+    planExpireTime?: string
+    resetMonthlyQuota?: boolean
+  }
+
+  type BaseResponseBillingAccountVO = {
+    code?: number
+    data?: BillingAccountVO
+    message?: string
+  }
+
+  type BaseResponseListPlanOptionVO = {
+    code?: number
+    data?: PlanOptionVO[]
+    message?: string
+  }
+
+  type BaseResponsePageCreditLedgerVO = {
+    code?: number
+    data?: {
+      records?: CreditLedgerVO[]
+      pageNumber?: number
+      pageSize?: number
+      totalRow?: number
+    }
+    message?: string
+  }
+
+  type BaseResponseBigDecimal = {
+    code?: number
+    data?: number
+    message?: string
   }
 }

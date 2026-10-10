@@ -50,16 +50,58 @@
               <a-tag v-if="record.userRole === 'admin'" color="green">管理员</a-tag>
               <a-tag v-else color="blue">普通用户</a-tag>
             </template>
+            <template v-else-if="column.dataIndex === 'planCode'">
+              <a-tag>{{ planLabel(record.planCode) }}</a-tag>
+            </template>
+            <template v-else-if="column.dataIndex === 'creditDisplay'">
+              {{ record.creditDisplay ?? 0 }}
+            </template>
             <template v-else-if="column.dataIndex === 'createTime'">
               {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
             </template>
             <template v-else-if="column.key === 'action'">
-              <a-button danger size="small" @click="doDelete(record.id)">删除</a-button>
+              <a-space>
+                <a-button size="small" @click="openRecharge(record)">充值</a-button>
+                <a-button size="small" @click="openAssignPlan(record)">套餐</a-button>
+                <a-button danger size="small" @click="doDelete(record.id)">删除</a-button>
+              </a-space>
             </template>
           </template>
         </a-table>
       </div>
     </div>
+
+    <a-modal v-model:open="rechargeVisible" title="积分充值" @ok="submitRecharge" :confirm-loading="billingSubmitting">
+      <a-form layout="vertical">
+        <a-form-item label="用户">
+          <a-input :value="billingTarget?.userAccount" disabled />
+        </a-form-item>
+        <a-form-item label="充值金额（元，将按 1 元 = 100 积分入账）" required>
+          <a-input-number v-model:value="rechargeAmount" :min="0.01" :step="1" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="备注">
+          <a-input v-model:value="rechargeRemark" placeholder="可选" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <a-modal v-model:open="planVisible" title="分配套餐" @ok="submitAssignPlan" :confirm-loading="billingSubmitting">
+      <a-form layout="vertical">
+        <a-form-item label="用户">
+          <a-input :value="billingTarget?.userAccount" disabled />
+        </a-form-item>
+        <a-form-item label="套餐" required>
+          <a-select v-model:value="assignPlanCode" style="width: 100%">
+            <a-select-option value="free">免费版</a-select-option>
+            <a-select-option value="pro">专业版</a-select-option>
+            <a-select-option value="enterprise">企业版</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="立即重置月额度">
+          <a-switch v-model:checked="resetMonthlyQuota" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -69,6 +111,7 @@ import { reactive, ref, onMounted, computed, h } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import { deleteUser, listUserVoByPage } from '@/api/userController'
+import { adminAssignPlan, adminRecharge } from '@/api/adminBillingController'
 
 const columns = [
   {
@@ -112,6 +155,18 @@ const columns = [
     align: 'center',
   },
   {
+    title: '套餐',
+    dataIndex: 'planCode',
+    width: 100,
+    align: 'center',
+  },
+  {
+    title: '积分',
+    dataIndex: 'creditDisplay',
+    width: 100,
+    align: 'center',
+  },
+  {
     title: '创建时间',
     dataIndex: 'createTime',
     width: 170,
@@ -120,7 +175,7 @@ const columns = [
   {
     title: '操作',
     key: 'action',
-    width: 100,
+    width: 220,
     align: 'center',
     fixed: 'right',
   },
@@ -202,6 +257,87 @@ const doDelete = async (id?: string) => {
       }
     },
   })
+}
+
+const planLabel = (planCode?: string) => {
+  if (planCode === 'pro') return '专业版'
+  if (planCode === 'enterprise') return '企业版'
+  return '免费版'
+}
+
+const billingTarget = ref<API.UserVO | null>(null)
+const billingSubmitting = ref(false)
+const rechargeVisible = ref(false)
+const planVisible = ref(false)
+const rechargeAmount = ref<number>(1)
+const rechargeRemark = ref('')
+const assignPlanCode = ref('pro')
+const resetMonthlyQuota = ref(true)
+
+const openRecharge = (record: API.UserVO) => {
+  billingTarget.value = record
+  rechargeAmount.value = 1
+  rechargeRemark.value = ''
+  rechargeVisible.value = true
+}
+
+const openAssignPlan = (record: API.UserVO) => {
+  billingTarget.value = record
+  assignPlanCode.value = record.planCode || 'free'
+  resetMonthlyQuota.value = true
+  planVisible.value = true
+}
+
+const submitRecharge = async () => {
+  if (!billingTarget.value?.id || !rechargeAmount.value || rechargeAmount.value <= 0) {
+    message.warning('请输入有效充值金额')
+    return
+  }
+  billingSubmitting.value = true
+  try {
+    const res = await adminRecharge({
+      userId: billingTarget.value.id,
+      amount: rechargeAmount.value,
+      remark: rechargeRemark.value,
+    })
+    if (res.data.code === 0) {
+      message.success(`充值成功，当前积分 ${res.data.data}`)
+      rechargeVisible.value = false
+      fetchData()
+    } else {
+      message.error(res.data.message || '充值失败')
+    }
+  } catch {
+    message.error('充值失败')
+  } finally {
+    billingSubmitting.value = false
+  }
+}
+
+const submitAssignPlan = async () => {
+  if (!billingTarget.value?.id || !assignPlanCode.value) {
+    message.warning('请选择套餐')
+    return
+  }
+  billingSubmitting.value = true
+  try {
+    const res = await adminAssignPlan({
+      userId: billingTarget.value.id,
+      planCode: assignPlanCode.value,
+      resetMonthlyQuota: resetMonthlyQuota.value,
+    })
+    if (res.data.code === 0) {
+      message.success('套餐已更新')
+      planVisible.value = false
+      fetchData()
+    } else {
+      message.error(res.data.message || '更新套餐失败')
+    }
+  } catch {
+    message.error('更新套餐失败')
+  } finally {
+    billingSubmitting.value = false
+  }
 }
 
 // 页面加载时请求一次

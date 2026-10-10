@@ -5,7 +5,7 @@
       <!-- 左侧 Logo 区域 -->
       <div class="logo-section">
         <img src="@/assets/shark.svg" alt="Logo" class="logo" />
-        <span class="title">Eureka Flow Builder</span>
+        <span class="title">{{ SITE_NAME }}</span>
       </div>
 
       <!-- 中间导航菜单 - 固定宽度，防止切换时抖动 -->
@@ -30,6 +30,9 @@
                 size="medium"
               />
               {{ loginUserStore.loginUser.userName ?? '无名' }}
+              <a-tag v-if="loginUserStore.loginUser.creditDisplay != null" color="blue">
+                {{ loginUserStore.loginUser.creditDisplay }} 积分
+              </a-tag>
             </a-space>
             <template #overlay>
               <a-menu>
@@ -61,6 +64,7 @@ import { LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { logout } from '@/api/userController'
+import { SITE_NAME } from '@/constants/site'
 import UserAvatar from './UserAvatar.vue'
 
 const loginUserStore = useLoginUserStore()
@@ -80,7 +84,7 @@ router.afterEach((to) => {
   selectedKeys.value = [to.path]
 })
 
-// 顶部导航菜单项配置 - 固定三个菜单项，管理员菜单通过disabled控制显示
+// 顶部导航菜单项配置
 const originItems: MenuProps['items'] = [
   {
     key: '/',
@@ -88,27 +92,14 @@ const originItems: MenuProps['items'] = [
     title: '首页',
   },
   {
-    key: '/admin/userManage',
-    label: '用户管理',
-    title: '用户管理',
-    disabled: computed(() => {
-      const loginUser = loginUserStore.loginUser
-      return !loginUser || loginUser.userRole !== 'admin'
-    }).value,
+    key: '/pricing',
+    label: '定价',
+    title: '定价',
   },
   {
-    key: '/admin/appManage',
-    label: '应用管理',
-    title: '应用管理',
-    disabled: computed(() => {
-      const loginUser = loginUserStore.loginUser
-      return !loginUser || loginUser.userRole !== 'admin'
-    }).value,
-  },
-  {
-    key: '/admin/chatHistoryManage',
-    label: '对话管理',
-    title: '对话管理',
+    key: '/admin/dashboard',
+    label: '管理后台',
+    title: '管理后台',
     disabled: computed(() => {
       const loginUser = loginUserStore.loginUser
       return !loginUser || loginUser.userRole !== 'admin'

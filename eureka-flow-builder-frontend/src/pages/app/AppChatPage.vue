@@ -746,6 +746,7 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
   let hasReceivedContent = false
   let lastReceiveTime = Date.now()
   let lastUpdateTime = Date.now()
+  let pendingEventType = ''
 
   // 创建节流的更新函数（带批处理）
   const updateMessageContent = () => {
@@ -818,10 +819,24 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
           const data = trimmedLine.slice(5).trim()
 
           // 忽略空数据和结束标记
-          if (!data || data === '[DONE]') continue
+          if (!data || data === '[DONE]') {
+            pendingEventType = ''
+            continue
+          }
 
           try {
             const parsed = JSON.parse(data)
+
+            if (pendingEventType === 'business-error' || parsed.error === true) {
+              forceUpdate()
+              const errorMsg = parsed.message || '业务处理失败'
+              if (parsed.code === 40200) {
+                message.error(errorMsg + '，可前往定价页了解套餐')
+              }
+              pendingEventType = ''
+              throw new Error(errorMsg)
+            }
+            pendingEventType = ''
 
             // 处理心跳 ping
             if (parsed.type === 'ping' || parsed.event === 'ping') {
@@ -886,6 +901,7 @@ const handleSSEResponse = async (response: Response, aiMessageIndex: number): Pr
         else if (trimmedLine.startsWith('event:')) {
           const eventType = trimmedLine.slice(6).trim()
           console.log('📨 收到事件:', eventType)
+          pendingEventType = eventType
 
           if (eventType === 'done' || eventType === 'complete') {
             forceUpdate() // 确保所有内容都已更新

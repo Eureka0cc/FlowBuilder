@@ -6,7 +6,7 @@
       <div class="auth-card">
         <div class="auth-header">
           <img src="@/assets/shark.svg" alt="Logo" class="auth-logo" />
-          <h1 class="auth-title">Eureka Flow Builder</h1>
+          <h1 class="auth-title">{{ SITE_NAME }}</h1>
           <p class="auth-slogan">零代码，生成完整应用</p>
         </div>
         <div class="auth-divider" aria-hidden="true"></div>
@@ -18,10 +18,15 @@
   </div>
 </template>
 
+<script setup lang="ts">
+import { SITE_NAME } from '@/constants/site'
+</script>
+
 <style scoped>
 .auth-page {
   position: relative;
-  min-height: calc(100vh - 64px - 72px);
+  /* 撑满内容区剩余高度，居中卡片；不再按固定页脚高度做减法估算 */
+  flex: 1 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -166,7 +171,6 @@
 @media (max-width: 768px) {
   .auth-page {
     padding: 32px 16px;
-    min-height: calc(100vh - 64px - 100px);
   }
 
   .auth-card {

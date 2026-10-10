@@ -101,6 +101,28 @@
               />
             </a-form-item>
 
+            <!-- 套餐与积分 -->
+            <a-form-item label="当前套餐">
+              <a-space>
+                <a-tag color="blue">{{ billingAccount?.planName || '免费版' }}</a-tag>
+                <a-button type="link" @click="router.push('/pricing')">查看定价</a-button>
+              </a-space>
+            </a-form-item>
+            <a-form-item label="积分余额">
+              <a-input
+                :value="`${billingAccount?.creditDisplay ?? 0} 积分`"
+                disabled
+                class="readonly-input"
+              />
+            </a-form-item>
+            <a-form-item label="应用用量">
+              <a-input
+                :value="appUsageText"
+                disabled
+                class="readonly-input"
+              />
+            </a-form-item>
+
             <!-- 保存按钮 -->
             <a-form-item>
               <a-button
@@ -114,6 +136,19 @@
               </a-button>
             </a-form-item>
           </a-form>
+
+          <div class="ledger-section">
+            <h2 class="ledger-title">积分流水</h2>
+            <a-table
+              :columns="ledgerColumns"
+              :data-source="ledgerRecords"
+              :pagination="ledgerPagination"
+              :loading="ledgerLoading"
+              row-key="id"
+              size="middle"
+              @change="onLedgerTableChange"
+            />
+          </div>
         </div>
       </a-spin>
     </div>
@@ -122,14 +157,17 @@
 
 <script setup lang="ts">
 import { reactive, ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { CameraOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { uploadAvatar, updateProfile } from '@/api/userController'
+import { getBillingAccount, pageBillingLedger } from '@/api/billingController'
 import AvatarCropper from '@/components/AvatarCropper.vue'
 
 const loginUserStore = useLoginUserStore()
+const router = useRouter()
 
 // 页面级 loading
 const pageLoading = ref(false)
@@ -137,6 +175,29 @@ const pageLoading = ref(false)
 const avatarUploading = ref(false)
 // 保存中的 loading
 const saving = ref(false)
+const billingAccount = ref<API.BillingAccountVO | null>(null)
+const ledgerLoading = ref(false)
+const ledgerRecords = ref<API.CreditLedgerVO[]>([])
+const ledgerPagination = reactive({
+  current: 1,
+  pageSize: 5,
+  total: 0,
+  showSizeChanger: false,
+})
+
+const ledgerColumns = [
+  { title: '时间', dataIndex: 'createTime', key: 'createTime', customRender: ({ text }: any) => dayjs(text).format('YYYY-MM-DD HH:mm') },
+  { title: '类型', dataIndex: 'bizType', key: 'bizType', width: 120 },
+  { title: '变动(积分)', dataIndex: 'changeDisplay', key: 'changeDisplay', width: 120 },
+  { title: '余额(积分)', dataIndex: 'balanceAfterDisplay', key: 'balanceAfterDisplay', width: 120 },
+  { title: '备注', dataIndex: 'remark', key: 'remark', ellipsis: true },
+]
+
+const appUsageText = computed(() => {
+  const count = billingAccount.value?.appCount ?? 0
+  const limit = billingAccount.value?.appLimit
+  return limit == null ? `${count} / 不限` : `${count} / ${limit}`
+})
 
 // 文件选择器 ref
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -292,16 +353,53 @@ const handleSave = async () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadUserData()
+  await Promise.all([loadBillingAccount(), loadLedger()])
 })
+
+const loadBillingAccount = async () => {
+  try {
+    const res = await getBillingAccount()
+    if (res.data.code === 0) {
+      billingAccount.value = res.data.data ?? null
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const loadLedger = async () => {
+  ledgerLoading.value = true
+  try {
+    const res = await pageBillingLedger({
+      pageNum: ledgerPagination.current,
+      pageSize: ledgerPagination.pageSize,
+    })
+    if (res.data.code === 0 && res.data.data) {
+      ledgerRecords.value = res.data.data.records ?? []
+      ledgerPagination.total = res.data.data.totalRow ?? 0
+    }
+  } catch {
+    message.error('加载积分流水失败')
+  } finally {
+    ledgerLoading.value = false
+  }
+}
+
+const onLedgerTableChange = (pagination: any) => {
+  ledgerPagination.current = pagination.current
+  ledgerPagination.pageSize = pagination.pageSize
+  loadLedger()
+}
 </script>
 
 <style scoped>
 /* ==================== 外层通栏容器 ==================== */
 .profile-page-wrapper {
   width: 100%;
-  min-height: calc(100vh - 64px - 72px);
+  /* 撑满内容区剩余高度，不再按固定页脚高度做减法估算 */
+  flex: 1 0 auto;
   background: #fff;
 }
 
@@ -442,6 +540,18 @@ onMounted(() => {
   font-size: 16px;
   border-radius: 8px;
   margin-top: 8px;
+}
+
+.ledger-section {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.ledger-title {
+  font-size: 18px;
+  margin: 0 0 16px;
+  color: #0f172a;
 }
 
 /* ==================== 响应式 ==================== */
